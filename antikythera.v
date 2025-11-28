@@ -1590,6 +1590,24 @@ Definition step_fractional (s : MechanismStateQ) (delta : Q) : MechanismStateQ :
 Definition zodiac_angular_deg (s : MechanismState) : Q :=
   (Zpos (Z.to_pos (zodiac_position s))) # 1.
 
+Inductive PlanetaryMotion : Set :=
+  | DirectMotion | StationaryMotion | RetrogradeMotion.
+
+Record PlanetaryPointer := mkPlanetaryPointer {
+  planet_longitude_deg : Q;
+  planet_motion_type : PlanetaryMotion;
+  synodic_phase_deg : Q
+}.
+
+Definition mars_retrograde_arc_deg : Q := 15 # 1.
+Definition jupiter_retrograde_arc_deg : Q := 10 # 1.
+Definition saturn_retrograde_arc_deg : Q := 7 # 1.
+
+Definition mars_retrograde_duration_days : Q := 72 # 1.
+Definition jupiter_retrograde_duration_days : Q := 121 # 1.
+Definition saturn_retrograde_duration_days : Q := 138 # 1.
+
+
 Fixpoint step_n (n : nat) (s : MechanismState) : MechanismState :=
   match n with O => s | S m => step (step_n m s) end.
 
