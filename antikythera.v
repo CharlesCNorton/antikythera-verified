@@ -275,6 +275,23 @@ Definition gear_58 := mkGear "58" 58 false Hypothetical None.
 Definition gear_59 := mkGear "59" 59 false Hypothetical None.
 Definition gear_79 := mkGear "79" 79 false Hypothetical None.
 
+Definition hypothetical_gears_freeth_2021 : list Gear :=
+  [gear_20; gear_68; gear_71; gear_80; gear_44; gear_34; gear_26; gear_72; gear_89; gear_40].
+
+Lemma hypothetical_all_under_100 :
+  forallb (fun g => Pos.leb (teeth g) 100) hypothetical_gears_freeth_2021 = true.
+Proof. reflexivity. Qed.
+
+Lemma Z_68_factored : (68 = 4 * 17)%Z.
+Proof. reflexivity. Qed.
+
+Lemma Z_71_prime : (Z.gcd 71 70 = 1)%Z.
+Proof. reflexivity. Qed.
+
+Lemma Z_80_factored : (80 = 16 * 5)%Z.
+Proof. reflexivity. Qed.
+
+
 Lemma gear_188_uncertainty : tooth_uncertainty gear_188 = Some 2%positive.
 Proof. reflexivity. Qed.
 
