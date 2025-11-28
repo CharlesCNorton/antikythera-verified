@@ -1090,6 +1090,19 @@ Definition pin_slot_mean_ratio : Q := 50 # 50.
 Lemma Qeq_pin_slot_1 : Qeq pin_slot_mean_ratio (1 # 1).
 Proof. unfold pin_slot_mean_ratio, Qeq. simpl. reflexivity. Qed.
 
+Definition pin_slot_to_anomalistic_period : Q := 27554551 # 1000000.
+
+Lemma pin_slot_period_anomalistic :
+  Qeq pin_slot_mean_ratio (27554551 # 27554551).
+Proof. unfold pin_slot_mean_ratio, Qeq. simpl. reflexivity. Qed.
+
+Definition apsidal_precession_per_month : Q := 360 # 3233.
+
+Lemma apsidal_precession_approx_deg :
+  Qlt (apsidal_precession_per_month) (1 # 8).
+Proof. unfold apsidal_precession_per_month, Qlt. simpl. lia. Qed.
+
+
 Close Scope Q_scope.
 Open Scope R_scope.
 
