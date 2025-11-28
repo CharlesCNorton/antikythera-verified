@@ -816,6 +816,15 @@ Record EclipseGlyph := mkEclipseGlyph {
   glyph_index : string
 }.
 
+Lemma full_moon_cycle_approx_556_months :
+  Qlt (55 # 1) full_moon_cycle_months /\ Qlt full_moon_cycle_months (56 # 1).
+Proof. unfold full_moon_cycle_months, Qlt. simpl. split; lia. Qed.
+
+Lemma saros_full_moon_relation :
+  Qeq (Qmult full_moon_cycle_months saros_full_moon_cycles) (223 # 1).
+Proof. unfold full_moon_cycle_months, saros_full_moon_cycles, Qeq, Qmult. simpl. reflexivity. Qed.
+
+
 Definition saros_total_cells : positive := 223.
 Definition saros_eclipse_cells : positive := 51.
 Definition saros_lunar_eclipses : positive := 38.
