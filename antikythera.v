@@ -65,10 +65,28 @@ Definition driven_direction (m : Mesh) : RotationDirection := flip_direction (dr
 
 Definition gear_ratio (m : Mesh) : Q := (Zpos (teeth (driven m))) # (teeth (driver m)).
 
+Definition driver_neq_driven (m : Mesh) : Prop :=
+  gear_name (driver m) <> gear_name (driven m).
+
+Record ValidMesh := mkValidMesh {
+  vm_mesh : Mesh;
+  vm_distinct : driver_neq_driven vm_mesh
+}.
+
+Definition valid_tooth_count (n : positive) : Prop := (15 <= Zpos n <= 223)%Z.
+
+
 Record Arbor := mkArbor {
   arbor_gears : list Gear;
   arbor_constraint : (length arbor_gears >= 1)%nat
 }.
+
+Record CoaxialArbor := mkCoaxialArbor {
+  coax_gears : list Gear;
+  coax_min_gears : (length coax_gears >= 1)%nat;
+  coax_shared_axis : string
+}.
+
 
 Inductive TrainElement : Set :=
   | SimpleMesh : Mesh -> TrainElement
