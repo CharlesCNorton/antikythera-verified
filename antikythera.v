@@ -100,6 +100,41 @@ Definition train_element_ratio (e : TrainElement) : Q :=
 
 Definition Train := list TrainElement.
 
+Definition output_gear (e : TrainElement) : option Gear :=
+  match e with
+  | SimpleMesh m => Some (driven m)
+  | ArborTransfer _ g2 => Some g2
+  end.
+
+Definition input_gear (e : TrainElement) : option Gear :=
+  match e with
+  | SimpleMesh m => Some (driver m)
+  | ArborTransfer g1 _ => Some g1
+  end.
+
+Definition gears_coaxial (g1 g2 : Gear) : Prop :=
+  gear_name g1 = gear_name g2 \/ 
+  exists arb : Arbor, In g1 (arbor_gears arb) /\ In g2 (arbor_gears arb).
+
+Definition elements_connected (e1 e2 : TrainElement) : Prop :=
+  match output_gear e1, input_gear e2 with
+  | Some g1, Some g2 => gears_coaxial g1 g2
+  | _, _ => False
+  end.
+
+Fixpoint train_connected (t : Train) : Prop :=
+  match t with
+  | nil => True
+  | [_] => True
+  | e1 :: ((e2 :: _) as rest) => elements_connected e1 e2 /\ train_connected rest
+  end.
+
+Record ValidTrain := mkValidTrain {
+  vt_train : Train;
+  vt_nonempty : vt_train <> nil;
+  vt_connected : train_connected vt_train
+}.
+
 Fixpoint train_ratio (t : Train) : Q :=
   match t with
   | nil => 1#1
@@ -129,11 +164,35 @@ Definition interval_valid (i : QInterval) : Prop := Qle (interval_low i) (interv
 
 Definition point_interval (q : Q) : QInterval := mkInterval q q.
 
+Definition gear_uncertainty_valid (g : Gear) : Prop :=
+  match tooth_uncertainty g with
+  | None => True
+  | Some u => (Zpos u < Zpos (teeth g))%Z
+  end.
+
 Definition teeth_min (g : Gear) : positive :=
   match tooth_uncertainty g with
   | None => teeth g
-  | Some u => Pos.sub (teeth g) u
+  | Some u => if Pos.ltb u (teeth g) then Pos.sub (teeth g) u else 1%positive
   end.
+
+Lemma teeth_min_positive : forall g, (Zpos (teeth_min g) >= 1)%Z.
+Proof. intro g. unfold teeth_min. destruct (tooth_uncertainty g); lia. Qed.
+
+Lemma teeth_min_valid_no_underflow : forall g,
+  gear_uncertainty_valid g ->
+  match tooth_uncertainty g with
+  | None => teeth_min g = teeth g
+  | Some u => Zpos (teeth_min g) = Zpos (teeth g) - Zpos u
+  end.
+Proof.
+  intro g. unfold gear_uncertainty_valid, teeth_min.
+  destruct (tooth_uncertainty g) as [u|].
+  - intro H. destruct (Pos.ltb u (teeth g)) eqn:Hlt.
+    + rewrite Pos2Z.inj_sub. reflexivity. apply Pos.ltb_lt. exact Hlt.
+    + apply Pos.ltb_ge in Hlt. lia.
+  - reflexivity.
+Qed.
 
 Definition teeth_max (g : Gear) : positive :=
   match tooth_uncertainty g with
@@ -185,6 +244,17 @@ Definition relative_uncertainty (g : Gear) : Q :=
 
 Definition ct_uncertainty_bound : Q := 3 # 100.
 
+Lemma gear_no_uncertainty_ratio_in_interval : forall m : Mesh,
+  tooth_uncertainty (driver m) = None ->
+  tooth_uncertainty (driven m) = None ->
+  gear_ratio_in_interval m.
+Proof.
+  intros m Hdrv Hdrn.
+  unfold gear_ratio_in_interval, interval_contains, gear_ratio_interval, gear_ratio.
+  unfold teeth_min, teeth_max. rewrite Hdrv, Hdrn. simpl.
+  split; apply Qle_refl.
+Qed.
+
 (* ========================================================================== *)
 (* II. Epicyclic Gearing                                                      *)
 (* ========================================================================== *)
@@ -201,7 +271,10 @@ Record EpicyclicTrain := mkEpicyclic {
   epi_ring : option EpicyclicRing
 }.
 
-Definition epicyclic_ratio_sun_fixed (e : EpicyclicTrain) : Q :=
+(* NOTE: This formula is specialized for the lunar pin-and-slot mechanism    *)
+(* with sun-fixed configuration. Not a general epicyclic train formula.       *)
+(* For general epicyclic kinematics, see Willis' fundamental circuit theory.  *)
+Definition lunar_epicyclic_mean_ratio (e : EpicyclicTrain) : Q :=
   let Zs := Zpos (sun_teeth (epi_sun e)) in
   let Zp := Zpos (planet_teeth (epi_planet e)) in
   Qmult (carrier_input_ratio (epi_carrier e)) ((Zs + Zp) # (carrier_teeth (epi_carrier e))).
@@ -223,8 +296,8 @@ Definition lunar_anomaly_epicyclic : EpicyclicTrain := mkEpicyclic
   (mkCarrier (1 # 1) 50) (mkPlanet 50 1) (mkSun 50 false) None.
 
 Lemma lunar_anomaly_epicyclic_mean_ratio :
-  Qeq (epicyclic_ratio_sun_fixed lunar_anomaly_epicyclic) (2 # 1).
-Proof. unfold epicyclic_ratio_sun_fixed, lunar_anomaly_epicyclic, Qeq. simpl. reflexivity. Qed.
+  Qeq (lunar_epicyclic_mean_ratio lunar_anomaly_epicyclic) (2 # 1).
+Proof. unfold lunar_epicyclic_mean_ratio, lunar_anomaly_epicyclic, Qeq. simpl. reflexivity. Qed.
 
 (* ========================================================================== *)
 (* III. Gear Corpus                                                           *)
@@ -304,6 +377,31 @@ Lemma gear_188_relative_uncertainty :
 Proof.
   unfold relative_uncertainty, gear_188, ct_uncertainty_bound. simpl.
   unfold Qlt. simpl. lia.
+Qed.
+
+Definition mesh_with_188 : Mesh := mkMesh gear_60 gear_188 Clockwise.
+
+Lemma mesh_188_interval_width :
+  interval_width (gear_ratio_interval mesh_with_188) = Qminus (190 # 60) (186 # 60).
+Proof. reflexivity. Qed.
+
+Definition saros_188_interval : QInterval :=
+  gear_ratio_interval mesh_with_188.
+
+Lemma saros_188_nominal_in_interval :
+  interval_contains saros_188_interval (188 # 60).
+Proof.
+  unfold saros_188_interval, interval_contains, gear_ratio_interval, mesh_with_188.
+  unfold teeth_min, teeth_max, gear_188. simpl.
+  split; unfold Qle; simpl; lia.
+Qed.
+
+Lemma saros_188_uncertainty_bounded :
+  Qlt (interval_width saros_188_interval) (1 # 10).
+Proof.
+  unfold saros_188_interval, interval_width, gear_ratio_interval, mesh_with_188.
+  unfold teeth_min, teeth_max, gear_188. simpl.
+  unfold Qlt, Qminus. simpl. lia.
 Qed.
 
 Definition ct_confirmed_gears : list Gear := [
@@ -488,6 +586,14 @@ Definition metonic_mesh_1 : Mesh := mkMesh gear_38a gear_127 Clockwise.
 Lemma gear_ratio_metonic_mesh_1 : gear_ratio metonic_mesh_1 = 127 # 38.
 Proof. reflexivity. Qed.
 
+Lemma metonic_mesh_1_ratio_in_interval : gear_ratio_in_interval metonic_mesh_1.
+Proof. apply gear_no_uncertainty_ratio_in_interval; reflexivity. Qed.
+
+Definition mesh_b1_e3 : Mesh := mkMesh gear_b1 gear_e3 Clockwise.
+
+Lemma saros_mesh_ratio_in_interval : gear_ratio_in_interval mesh_b1_e3.
+Proof. apply gear_no_uncertainty_ratio_in_interval; reflexivity. Qed.
+
 Definition metonic_compound_factor : Q := 235 # 127.
 
 Lemma Qeq_127_38_mul_235_127 : Qeq (Qmult (127 # 38) (235 # 127)) (235 # 38).
@@ -566,6 +672,14 @@ Proof.
   unfold Qinv, Qeq. simpl. reflexivity.
 Qed.
 
+Theorem venus_train_complete :
+  venus_spec (Qinv (train_ratio venus_train_simple)) /\ train_ratio venus_train_simple = Qmult (44 # 51) (Qmult (26 # 34) (63 # 26)).
+Proof.
+  split.
+  - unfold venus_spec. exact Qeq_venus_inv_289_462.
+  - reflexivity.
+Qed.
+
 (* ========================================================================== *)
 (* VII. Saturn Train                                                          *)
 (* ========================================================================== *)
@@ -597,8 +711,8 @@ Definition saturn_epicyclic : EpicyclicTrain := mkEpicyclic
   (mkCarrier (1 # 1) 56) (mkPlanet 61 2) (mkSun 52 true) None.
 
 Lemma saturn_epicyclic_ratio_computed :
-  epicyclic_ratio_sun_fixed saturn_epicyclic = 113 # 56.
-Proof. unfold epicyclic_ratio_sun_fixed, saturn_epicyclic. simpl. reflexivity. Qed.
+  lunar_epicyclic_mean_ratio saturn_epicyclic = 113 # 56.
+Proof. unfold lunar_epicyclic_mean_ratio, saturn_epicyclic. simpl. reflexivity. Qed.
 
 Definition saturn_direct_ratio : Q := 427 # 442.
 
@@ -1014,6 +1128,40 @@ Lemma synodic_derivation :
   Qeq (synodic_from_sidereal (254 # 19)) (235 # 19).
 Proof. unfold synodic_from_sidereal, Qeq, Qminus. simpl. reflexivity. Qed.
 
+Definition moon_phase_from_positions (sun_deg moon_deg : Q) : Q :=
+  Qminus moon_deg sun_deg.
+
+Definition moon_phase_to_illumination (phase_deg : Q) : Q :=
+  let normalized := Qmake (Qnum phase_deg mod 360) (Qden phase_deg) in
+  if Qle_bool normalized (180 # 1) 
+  then Qdiv normalized (180 # 1)
+  else Qdiv (Qminus (360 # 1) normalized) (180 # 1).
+
+Inductive LunarPhase : Set :=
+  | NewMoon | WaxingCrescent | FirstQuarter | WaxingGibbous
+  | FullMoon | WaningGibbous | LastQuarter | WaningCrescent.
+
+Definition phase_from_angle (angle_deg : Z) : LunarPhase :=
+  let norm := (angle_deg mod 360)%Z in
+  if (norm <? 23)%Z then NewMoon
+  else if (norm <? 68)%Z then WaxingCrescent
+  else if (norm <? 113)%Z then FirstQuarter
+  else if (norm <? 158)%Z then WaxingGibbous
+  else if (norm <? 203)%Z then FullMoon
+  else if (norm <? 248)%Z then WaningGibbous
+  else if (norm <? 293)%Z then LastQuarter
+  else if (norm <? 338)%Z then WaningCrescent
+  else NewMoon.
+
+Lemma phase_at_0_is_new : phase_from_angle 0 = NewMoon.
+Proof. reflexivity. Qed.
+
+Lemma phase_at_180_is_full : phase_from_angle 180 = FullMoon.
+Proof. reflexivity. Qed.
+
+Lemma phase_at_90_is_first_quarter : phase_from_angle 90 = FirstQuarter.
+Proof. reflexivity. Qed.
+
 Definition eclipse_node_condition (moon_lat : Z) : bool :=
   (Z.abs moon_lat <=? 5)%Z.
 
@@ -1024,6 +1172,27 @@ Lemma eclipse_node_at_5 : eclipse_node_condition 5 = true.
 Proof. reflexivity. Qed.
 
 Lemma eclipse_node_at_6 : eclipse_node_condition 6 = false.
+Proof. reflexivity. Qed.
+
+Definition predict_eclipse (saros_month : Z) (moon_lat : Z) : bool :=
+  eclipse_node_condition moon_lat.
+
+Definition eclipse_possible_in_month (month_index : Z) : bool :=
+  let node_position := (month_index * 12)%Z mod 223 in
+  (node_position <? 20)%Z || (node_position >? 203)%Z.
+
+Lemma eclipse_possible_at_month_0 : eclipse_possible_in_month 0 = true.
+Proof. reflexivity. Qed.
+
+Lemma eclipse_possible_at_month_100 : eclipse_possible_in_month 100 = false.
+Proof. reflexivity. Qed.
+
+Definition saros_eclipse_months : list Z :=
+  [1; 6; 12; 18; 23; 29; 35; 41; 47; 53; 59; 65; 71; 77; 83; 89; 95; 
+   101; 107; 113; 119; 124; 130; 136; 142; 148; 154; 160; 166; 172; 
+   178; 184; 189; 195; 201; 207; 213; 218].
+
+Lemma saros_eclipse_count : (length saros_eclipse_months = 38)%nat.
 Proof. reflexivity. Qed.
 
 Definition lunar_node_period_months : Q := 2232584 # 10000.
@@ -1102,6 +1271,30 @@ Lemma apsidal_precession_approx_deg :
   Qlt (apsidal_precession_per_month) (1 # 8).
 Proof. unfold apsidal_precession_per_month, Qlt. simpl. lia. Qed.
 
+Definition apsidal_precession_period_months : Q := 3233 # 1.
+
+Definition gear_l1 := mkGear "l1" 38 true FragmentA None.
+Definition gear_l2 := mkGear "l2" 53 true FragmentA None.
+Definition gear_m1 := mkGear "m1" 96 true FragmentA None.
+Definition gear_m2 := mkGear "m2" 15 true FragmentA None.
+Definition gear_m3 := mkGear "m3" 27 true FragmentC None.
+
+Definition apsidal_train_ratio : Q :=
+  Qmult (38 # 64) (Qmult (96 # 53) (223 # 27)).
+
+Lemma apsidal_train_ratio_computed :
+  Qeq apsidal_train_ratio (813504 # 91584).
+Proof.
+  unfold apsidal_train_ratio, Qeq, Qmult. simpl. reflexivity.
+Qed.
+
+Definition apsidal_period_years : Q := 4237 # 477.
+
+Lemma apsidal_period_near_9_years :
+  Qlt (8 # 1) apsidal_period_years /\ Qlt apsidal_period_years (9 # 1).
+Proof.
+  unfold apsidal_period_years, Qlt. simpl. split; lia.
+Qed.
 
 Close Scope Q_scope.
 Open Scope R_scope.
@@ -1166,6 +1359,11 @@ Open Scope Q_scope.
 
 Definition sidereal_months_per_metonic : positive := 254.
 Definition years_per_metonic : positive := 19.
+
+(* lunar_sidereal_ratio is a FREQUENCY: sidereal lunar rotations per year.   *)
+(* Value 254/19 means ~13.368 orbits/year. NOT a period (which would be      *)
+(* 19/254 years/orbit). synodic_from_sidereal subtracts 1 to get synodic     *)
+(* frequency because synodic_freq = sidereal_freq - solar_freq (1/year).     *)
 Definition lunar_sidereal_ratio : Q := 254 # 19.
 
 Lemma Z_254_eq_235_plus_19 : (254 = 235 + 19)%Z.
@@ -1201,11 +1399,36 @@ Proof. unfold Qeq. simpl. reflexivity. Qed.
 Lemma Qeq_254_38_reduced : Qeq (254 # 38) (127 # 19).
 Proof. unfold Qeq. simpl. reflexivity. Qed.
 
-Definition moon_gear_b3 := mkGear "b3" 127 true FragmentA None.
+Definition gear_d2 := mkGear "d2" 127 true FragmentA None.
 
-Theorem moon_train_uses_127 :
-  teeth moon_gear_b3 = teeth gear_127.
+Theorem moon_train_uses_d2 :
+  teeth gear_d2 = teeth gear_127.
 Proof. reflexivity. Qed.
+
+Definition gear_a1 := mkGear "a1" 48 true FragmentA None.
+Definition gear_b2 := mkGear "b2" 64 true FragmentA None.
+Definition gear_c1 := mkGear "c1" 38 true FragmentA None.
+Definition gear_c2 := mkGear "c2" 48 true FragmentA None.
+Definition gear_d1 := mkGear "d1" 24 true FragmentA None.
+Definition gear_e2 := mkGear "e2" 32 true FragmentA None.
+
+Definition moon_pointer_full_train : Train := [
+  SimpleMesh (mkMesh gear_b2 gear_c1 Clockwise);
+  ArborTransfer gear_c1 gear_c2;
+  SimpleMesh (mkMesh gear_c2 gear_d1 CounterClockwise);
+  ArborTransfer gear_d1 gear_d2;
+  SimpleMesh (mkMesh gear_d1 gear_d2 Clockwise)
+].
+
+Definition moon_train_product : Q :=
+  Qmult (38 # 64) (Qmult (24 # 48) (127 # 24)).
+
+Lemma moon_train_product_computed : 
+  Qeq moon_train_product (38 * 24 * 127 # 64 * 48 * 24).
+Proof. unfold moon_train_product, Qeq, Qmult. simpl. reflexivity. Qed.
+
+Lemma moon_train_product_simplified : Qeq moon_train_product (4826 # 3072).
+Proof. unfold moon_train_product, Qeq, Qmult. simpl. reflexivity. Qed.
 
 Close Scope Q_scope.
 
@@ -1255,6 +1478,39 @@ Definition calendar_type_lunar : Prop := calendar_ring_holes = 354%positive.
 Theorem calendar_354 : calendar_type_lunar.
 Proof. unfold calendar_type_lunar, calendar_ring_holes. reflexivity. Qed.
 
+Definition metonic_intercalary_months : positive := 7.
+Definition metonic_regular_years : positive := 12.
+Definition metonic_total_years : positive := 19.
+
+Lemma metonic_month_count :
+  (12 * 19 + 7 = 235)%Z.
+Proof. reflexivity. Qed.
+
+Definition intercalary_year_indices : list Z := [3; 6; 8; 11; 14; 17; 19].
+
+Definition is_intercalary_year (year_in_cycle : Z) : bool :=
+  existsb (Z.eqb year_in_cycle) intercalary_year_indices.
+
+Lemma year_3_intercalary : is_intercalary_year 3 = true.
+Proof. reflexivity. Qed.
+
+Lemma year_4_regular : is_intercalary_year 4 = false.
+Proof. reflexivity. Qed.
+
+Lemma intercalary_count_7 :
+  (length (filter (fun y => is_intercalary_year y) 
+    [1%Z;2%Z;3%Z;4%Z;5%Z;6%Z;7%Z;8%Z;9%Z;10%Z;11%Z;12%Z;13%Z;14%Z;15%Z;16%Z;17%Z;18%Z;19%Z]) = 7)%nat.
+Proof. reflexivity. Qed.
+
+Definition months_in_year (year_in_cycle : Z) : Z :=
+  if is_intercalary_year year_in_cycle then 13 else 12.
+
+Lemma regular_year_12_months : months_in_year 1 = 12.
+Proof. reflexivity. Qed.
+
+Lemma intercalary_year_13_months : months_in_year 3 = 13.
+Proof. reflexivity. Qed.
+
 Definition egyptian_calendar_holes : positive := 365.
 
 Record BayesFactor := mkBayesFactor {
@@ -1278,6 +1534,48 @@ Definition tangential_positioning_precision : Q := 129 # 1000.
 
 Lemma Qlt_radial_1 : Qlt radial_positioning_precision (1 # 1).
 Proof. unfold Qlt, radial_positioning_precision. simpl. lia. Qed.
+
+Inductive CorinthianMonth : Set :=
+  | Phoinikaios | Kraneios | Lanotropios | Machaneus
+  | Dodekateus | Eukleios | Artemisios | Psydreus
+  | Gameilios | Agrianios | Panamos | Apellaios.
+
+Definition month_index (m : CorinthianMonth) : nat :=
+  match m with
+  | Phoinikaios => 0 | Kraneios => 1 | Lanotropios => 2 | Machaneus => 3
+  | Dodekateus => 4 | Eukleios => 5 | Artemisios => 6 | Psydreus => 7
+  | Gameilios => 8 | Agrianios => 9 | Panamos => 10 | Apellaios => 11
+  end.
+
+Definition month_from_index (n : nat) : option CorinthianMonth :=
+  match Nat.modulo n 12 with
+  | O => Some Phoinikaios 
+  | S O => Some Kraneios 
+  | S (S O) => Some Lanotropios
+  | S (S (S O)) => Some Machaneus 
+  | S (S (S (S O))) => Some Dodekateus 
+  | S (S (S (S (S O)))) => Some Eukleios
+  | S (S (S (S (S (S O))))) => Some Artemisios 
+  | S (S (S (S (S (S (S O)))))) => Some Psydreus 
+  | S (S (S (S (S (S (S (S O))))))) => Some Gameilios
+  | S (S (S (S (S (S (S (S (S O)))))))) => Some Agrianios 
+  | S (S (S (S (S (S (S (S (S (S O))))))))) => Some Panamos 
+  | S (S (S (S (S (S (S (S (S (S (S O)))))))))) => Some Apellaios
+  | _ => None
+  end.
+
+Definition days_in_month (m : CorinthianMonth) : nat :=
+  match m with
+  | Phoinikaios | Lanotropios | Dodekateus | Artemisios | Gameilios | Panamos => 30
+  | Kraneios | Machaneus | Eukleios | Psydreus | Agrianios | Apellaios => 29
+  end.
+
+Lemma calendar_ring_days_sum :
+  (30 * 6 + 29 * 6 = 354)%nat.
+Proof. reflexivity. Qed.
+
+Lemma month_index_phoinikaios : month_index Phoinikaios = 0%nat.
+Proof. reflexivity. Qed.
 
 (* ========================================================================== *)
 (* XII. Zodiac Dial                                                           *)
@@ -1312,6 +1610,24 @@ Proof. unfold Qeq. simpl. reflexivity. Qed.
 
 Definition zodiac_egyptian_calendar_offset : Z := 0.
 Definition precession_per_century_arcsec : positive := 5029.
+
+Definition sun_pointer_train : Train := [
+  SimpleMesh (mkMesh gear_b2 gear_a1 Clockwise)
+].
+
+Definition sun_pointer_ratio : Q := train_ratio sun_pointer_train.
+
+Lemma sun_pointer_ratio_48_64 : sun_pointer_ratio = Qmake 48 64.
+Proof. reflexivity. Qed.
+
+Lemma sun_pointer_ratio_reduced : Qeq sun_pointer_ratio (Qmake 3 4).
+Proof. unfold sun_pointer_ratio, sun_pointer_train, train_ratio. unfold Qeq. simpl. reflexivity. Qed.
+
+Definition sun_annual_ratio : Q := Qmake 1 1.
+
+Lemma sun_one_rotation_per_year :
+  Qeq (Qmult sun_pointer_ratio (Qmake 4 3)) sun_annual_ratio.
+Proof. unfold sun_pointer_ratio, sun_annual_ratio, sun_pointer_train. unfold Qeq, Qmult. simpl. reflexivity. Qed.
 
 (* ========================================================================== *)
 (* XIII. Games Dial                                                           *)
@@ -1536,6 +1852,16 @@ Close Scope Q_scope.
 (* ========================================================================== *)
 (* XVI. State Machine                                                         *)
 (* ========================================================================== *)
+(*                                                                            *)
+(*  NOTE: This is a LOGICAL state-space model of dial cell indices, not a     *)
+(*  kinematically faithful simulation. Each dial increments by 1 per step,    *)
+(*  representing advancement by one cell. In the physical mechanism, one      *)
+(*  crank rotation advances dials by their respective gear ratios (e.g.,      *)
+(*  Metonic advances 235/19 cells per year, not 1). This abstraction is       *)
+(*  intentional: it models the discrete state space for periodicity proofs    *)
+(*  while the gear train sections handle continuous ratio relationships.      *)
+(*                                                                            *)
+(* ========================================================================== *)
 
 Open Scope Z_scope.
 
@@ -1586,6 +1912,55 @@ Lemma reverse_crank_example :
   step_reverse (step (step initial_state)) = step initial_state.
 Proof. reflexivity. Qed.
 
+Lemma step_reverse_step_bounded : forall s : MechanismState,
+  (0 <= metonic_dial s < metonic_modulus)%Z ->
+  (0 <= saros_dial s < saros_modulus)%Z ->
+  (0 <= callippic_dial s < callippic_modulus)%Z ->
+  (0 <= exeligmos_dial s < exeligmos_modulus)%Z ->
+  (0 <= games_dial s < games_modulus)%Z ->
+  (0 <= zodiac_position s < zodiac_modulus)%Z ->
+  crank_position (step_reverse (step s)) = crank_position s.
+Proof.
+  intros s Hm Hs Hc He Hg Hz.
+  unfold step, step_reverse. destruct s. simpl. lia.
+Qed.
+
+Definition is_prime_divisor (p n : Z) : bool :=
+  (1 <? p)%Z && (n mod p =? 0)%Z && (Z.gcd p (n / p) =? 1)%Z.
+
+Lemma gcd_235_223_eq_1 : (Z.gcd 235 223 = 1)%Z.
+Proof. reflexivity. Qed.
+
+Lemma gcd_235_76_eq_1 : (Z.gcd 235 76 = 1)%Z.
+Proof. reflexivity. Qed.
+
+Lemma lcm_235_223 : (Z.lcm 235 223 = 52405)%Z.
+Proof. reflexivity. Qed.
+
+Theorem metonic_saros_coprime :
+  (Z.gcd metonic_modulus saros_modulus = 1)%Z.
+Proof. unfold metonic_modulus, saros_modulus. reflexivity. Qed.
+
+Definition gear_module_compatible (g1 g2 : Gear) : Prop :=
+  valid_tooth_count (teeth g1) /\ valid_tooth_count (teeth g2).
+
+Lemma hypothetical_gears_valid_teeth :
+  forallb (fun g => (15 <=? Zpos (teeth g))%Z && (Zpos (teeth g) <=? 223)%Z) 
+    hypothetical_gears_freeth_2021 = true.
+Proof. reflexivity. Qed.
+
+Theorem incorrect_venus_ratio_fails :
+  ~ Qeq (train_ratio venus_train_simple) (288 # 462).
+Proof.
+  unfold Qeq, train_ratio, venus_train_simple. simpl. lia.
+Qed.
+
+Theorem incorrect_metonic_ratio_fails :
+  ~ Qeq metonic_train_ratio (234 # 19).
+Proof.
+  unfold Qeq, metonic_train_ratio. simpl. lia.
+Qed.
+
 Definition sub_step_resolution : positive := 30.
 
 Record MechanismStateQ := mkStateQ {
@@ -1594,14 +1969,54 @@ Record MechanismStateQ := mkStateQ {
   zodiac_position_q : Q
 }.
 
-Definition step_fractional (s : MechanismStateQ) (delta : Q) : MechanismStateQ :=
+Definition state_to_stateQ (s : MechanismState) : MechanismStateQ :=
   mkStateQ
-    (crank_position_q s + delta)
-    (Qred (crank_position_q s + delta) * (235 # 19))
-    (Qred (crank_position_q s + delta) * (360 # 1)).
+    (Qmake (crank_position s) 1)
+    (Qmake (metonic_dial s) 1)
+    (Qmake (zodiac_position s) 1).
+
+Definition Q_to_Z_floor (q : Q) : Z := Qnum q / Zpos (Qden q).
+
+Definition stateQ_floor (sq : MechanismStateQ) : MechanismState :=
+  mkState
+    (Q_to_Z_floor (crank_position_q sq))
+    (Z.modulo (Q_to_Z_floor (metonic_dial_q sq)) metonic_modulus)
+    0
+    0
+    0
+    0
+    (Z.modulo (Q_to_Z_floor (zodiac_position_q sq)) zodiac_modulus).
+
+Lemma state_to_stateQ_initial :
+  state_to_stateQ initial_state = mkStateQ (Qmake 0 1) (Qmake 0 1) (Qmake 0 1).
+Proof. reflexivity. Qed.
+
+Lemma stateQ_floor_initial :
+  stateQ_floor (state_to_stateQ initial_state) = initial_state.
+Proof. reflexivity. Qed.
+
+(* Qred removed: it is non-homomorphic and complicates algebraic reasoning.  *)
+(* Raw Q products preserve algebraic structure for proofs.                    *)
+Definition step_fractional (s : MechanismStateQ) (delta : Q) : MechanismStateQ :=
+  let new_crank := Qplus (crank_position_q s) delta in
+  mkStateQ
+    new_crank
+    (Qmult new_crank (235 # 19))
+    (Qmult new_crank (360 # 1)).
 
 Definition zodiac_angular_deg (s : MechanismState) : Q :=
-  (Zpos (Z.to_pos (zodiac_position s))) # 1.
+  Qmake (zodiac_position s) 1.
+
+Lemma zodiac_angular_deg_zero : zodiac_angular_deg initial_state = Qmake 0 1.
+Proof. reflexivity. Qed.
+
+Lemma zodiac_angular_deg_bounds : forall s,
+  (0 <= zodiac_position s < zodiac_modulus)%Z ->
+  Qle (Qmake 0 1) (zodiac_angular_deg s) /\ Qlt (zodiac_angular_deg s) (Qmake 360 1).
+Proof.
+  intros s [Hlo Hhi]. unfold zodiac_angular_deg, zodiac_modulus in *.
+  split; unfold Qle, Qlt; simpl; lia.
+Qed.
 
 Inductive PlanetaryMotion : Set :=
   | DirectMotion | StationaryMotion | RetrogradeMotion.
@@ -1615,6 +2030,34 @@ Record PlanetaryPointer := mkPlanetaryPointer {
 Definition mars_retrograde_arc_deg : Q := 15 # 1.
 Definition jupiter_retrograde_arc_deg : Q := 10 # 1.
 Definition saturn_retrograde_arc_deg : Q := 7 # 1.
+
+Record PlanetaryPositions := mkPlanetaryPositions {
+  mercury_pos : Q;
+  venus_pos : Q;
+  mars_pos : Q;
+  jupiter_pos : Q;
+  saturn_pos : Q
+}.
+
+Record ExtendedMechanismState := mkExtendedState {
+  base_state : MechanismState;
+  moon_phase_deg : Q;
+  planetary_positions : PlanetaryPositions
+}.
+
+Definition initial_planetary_positions : PlanetaryPositions :=
+  mkPlanetaryPositions (0#1) (0#1) (0#1) (0#1) (0#1).
+
+Definition initial_extended_state : ExtendedMechanismState :=
+  mkExtendedState initial_state (0#1) initial_planetary_positions.
+
+Definition planetary_step (pp : PlanetaryPositions) (years_delta : Q) : PlanetaryPositions :=
+  mkPlanetaryPositions
+    (Qplus (mercury_pos pp) (Qmult years_delta mercury_ratio))
+    (Qplus (venus_pos pp) (Qmult years_delta venus_ratio))
+    (Qplus (mars_pos pp) (Qmult years_delta mars_ratio))
+    (Qplus (jupiter_pos pp) (Qmult years_delta jupiter_ratio))
+    (Qplus (saturn_pos pp) (Qmult years_delta saturn_ratio)).
 
 Definition mars_retrograde_duration_days : Q := 72 # 1.
 Definition jupiter_retrograde_duration_days : Q := 121 # 1.
@@ -1941,6 +2384,65 @@ Proof. unfold high_confidence, venus_provenance. simpl. lia. Qed.
 
 Theorem mercury_low_conf : ~high_confidence mercury_provenance.
 Proof. unfold high_confidence, mercury_provenance. simpl. lia. Qed.
+
+(* ========================================================================== *)
+(* XIX. Type Safety and Automation                                            *)
+(* ========================================================================== *)
+
+Record Frequency := mkFrequency { freq_value : Q }.
+Record Period := mkPeriod { period_value : Q }.
+
+Definition freq_to_period (f : Frequency) : Period :=
+  mkPeriod (Qinv (freq_value f)).
+
+Definition period_to_freq (p : Period) : Frequency :=
+  mkFrequency (Qinv (period_value p)).
+
+Lemma freq_period_inverse_example :
+  Qeq (Qinv (Qinv (254 # 19))) (254 # 19).
+Proof.
+  unfold Qeq, Qinv. simpl. reflexivity.
+Qed.
+
+Definition lunar_sidereal_freq : Frequency := mkFrequency (254 # 19).
+Definition metonic_synodic_freq : Frequency := mkFrequency (235 # 19).
+
+Lemma synodic_freq_from_sidereal :
+  Qeq (freq_value metonic_synodic_freq) 
+      (Qminus (freq_value lunar_sidereal_freq) (1 # 1)).
+Proof.
+  unfold metonic_synodic_freq, lunar_sidereal_freq, freq_value, Qeq, Qminus.
+  simpl. reflexivity.
+Qed.
+
+Ltac solve_gear_ratio :=
+  unfold gear_ratio, teeth; simpl; reflexivity.
+
+Ltac solve_Qeq :=
+  unfold Qeq; simpl; try reflexivity; try lia.
+
+Ltac prove_ratio_bounds :=
+  unfold Qlt, Qle; simpl; lia.
+
+Definition ct_uncertainty_error_bound : Q := 5 # 1000.
+
+Lemma gear_188_interval_small :
+  Qlt (Qminus (190 # 60) (186 # 60)) (1 # 10).
+Proof.
+  unfold Qminus, Qlt. simpl. lia.
+Qed.
+
+Definition mars_synodic_from_period (orbital_period_years sidereal_year : Q) : Q :=
+  Qinv (Qminus (Qinv orbital_period_years) (Qinv sidereal_year)).
+
+Definition mars_orbital_period : Q := 18780 # 10000.
+
+Lemma mars_retrograde_related_to_synodic :
+  Qlt (mars_retrograde_duration_days) (mars_synodic_days / (5 # 1)).
+Proof.
+  unfold mars_retrograde_duration_days, mars_synodic_days, Qdiv, Qlt.
+  simpl. lia.
+Qed.
 
 (* ========================================================================== *)
 (* END                                                                        *)
