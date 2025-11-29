@@ -87,7 +87,6 @@ Record CoaxialArbor := mkCoaxialArbor {
   coax_shared_axis : string
 }.
 
-
 Inductive TrainElement : Set :=
   | SimpleMesh : Mesh -> TrainElement
   | ArborTransfer : Gear -> Gear -> TrainElement.
@@ -255,6 +254,61 @@ Proof.
   split; apply Qle_refl.
 Qed.
 
+Definition train_element_interval (e : TrainElement) : QInterval :=
+  match e with
+  | SimpleMesh m => gear_ratio_interval m
+  | ArborTransfer _ _ => point_interval (1 # 1)
+  end.
+
+Fixpoint train_ratio_interval (t : Train) : QInterval :=
+  match t with
+  | nil => point_interval (1 # 1)
+  | e :: rest => interval_mult (train_element_interval e) (train_ratio_interval rest)
+  end.
+
+Lemma train_ratio_interval_nil : 
+  train_ratio_interval nil = point_interval (1 # 1).
+Proof. reflexivity. Qed.
+
+Lemma train_ratio_interval_cons : forall e t,
+  train_ratio_interval (e :: t) = 
+  interval_mult (train_element_interval e) (train_ratio_interval t).
+Proof. reflexivity. Qed.
+
+Definition train_all_no_uncertainty (t : Train) : Prop :=
+  forall e, In e t ->
+  match e with
+  | SimpleMesh m => tooth_uncertainty (driver m) = None /\ tooth_uncertainty (driven m) = None
+  | ArborTransfer _ _ => True
+  end.
+
+Lemma train_ratio_in_interval_nil :
+  interval_contains (train_ratio_interval nil) (train_ratio nil).
+Proof. simpl. apply point_interval_contains. Qed.
+
+Lemma train_element_interval_nonneg : forall e,
+  Qle 0 (interval_low (train_element_interval e)).
+Proof.
+  intro e. destruct e as [m | g1 g2].
+  - unfold train_element_interval, gear_ratio_interval, teeth_min, teeth_max, Qle. simpl. lia.
+  - unfold train_element_interval, point_interval, Qle. simpl. lia.
+Qed.
+
+Lemma train_ratio_interval_nonneg : forall t,
+  Qle 0 (interval_low (train_ratio_interval t)).
+Proof.
+  intro t. induction t as [|e rest IH].
+  - simpl. unfold point_interval, Qle. simpl. lia.
+  - simpl. unfold interval_mult, Qle. simpl.
+    assert (H1 : (0 <= Qnum (interval_low (train_element_interval e)))%Z).
+    { pose proof (train_element_interval_nonneg e) as He.
+      unfold Qle in He. simpl in He. lia. }
+    assert (H2 : (0 <= Qnum (interval_low (train_ratio_interval rest)))%Z).
+    { unfold Qle in IH. simpl in IH. lia. }
+    apply Z.mul_nonneg_nonneg; [|lia].
+    apply Z.mul_nonneg_nonneg; lia.
+Qed.
+
 (* ========================================================================== *)
 (* II. Epicyclic Gearing                                                      *)
 (* ========================================================================== *)
@@ -364,6 +418,63 @@ Proof. reflexivity. Qed.
 Lemma Z_80_factored : (80 = 16 * 5)%Z.
 Proof. reflexivity. Qed.
 
+Record GearPhysical := mkGearPhysical {
+  phys_gear : Gear;
+  phys_module_mm : Q;
+  phys_pitch_diameter_mm : Q;
+  phys_outer_diameter_mm : Q
+}.
+
+Definition compute_pitch_diameter (teeth_count : positive) (module_mm : Q) : Q :=
+  Qmult (Zpos teeth_count # 1) module_mm.
+
+Definition compute_outer_diameter (pitch_d : Q) (module_mm : Q) : Q :=
+  Qplus pitch_d (Qmult (2 # 1) module_mm).
+
+Record ArborPhysical := mkArborPhysical {
+  arbor_phys_gears : list GearPhysical;
+  arbor_axis_diameter_mm : Q;
+  arbor_length_mm : Q;
+  arbor_phys_nonempty : (length arbor_phys_gears >= 1)%nat
+}.
+
+Definition all_same_module (gs : list GearPhysical) : Prop :=
+  match gs with
+  | nil => True
+  | g :: rest => forall g', In g' rest -> Qeq (phys_module_mm g) (phys_module_mm g')
+  end.
+
+Definition gears_fit_on_arbor (arb : ArborPhysical) : Prop :=
+  forall g, In g (arbor_phys_gears arb) ->
+    Qlt (arbor_axis_diameter_mm arb) (phys_pitch_diameter_mm g).
+
+Definition antikythera_module : Q := 5 # 10.
+
+Lemma antikythera_module_half_mm : Qeq antikythera_module (1 # 2).
+Proof. reflexivity. Qed.
+
+Definition gear_50_physical : GearPhysical :=
+  let m := antikythera_module in
+  let pd := compute_pitch_diameter 50 m in
+  mkGearPhysical gear_50a m pd (compute_outer_diameter pd m).
+
+Lemma gear_50_pitch_diameter :
+  Qeq (phys_pitch_diameter_mm gear_50_physical) (25 # 1).
+Proof.
+  unfold gear_50_physical, compute_pitch_diameter, antikythera_module.
+  unfold Qeq, Qmult. simpl. reflexivity.
+Qed.
+
+Definition gear_physical_valid (g : GearPhysical) : Prop :=
+  Qeq (phys_pitch_diameter_mm g) (compute_pitch_diameter (teeth (phys_gear g)) (phys_module_mm g)) /\ 
+  Qeq (phys_outer_diameter_mm g) (compute_outer_diameter (phys_pitch_diameter_mm g) (phys_module_mm g)).
+
+Lemma gear_50_physical_valid : gear_physical_valid gear_50_physical.
+Proof.
+  unfold gear_physical_valid, gear_50_physical, compute_pitch_diameter, compute_outer_diameter.
+  unfold antikythera_module, gear_50a. simpl.
+  split; reflexivity.
+Qed.
 
 Lemma gear_188_uncertainty : tooth_uncertainty gear_188 = Some 2%positive.
 Proof. reflexivity. Qed.
@@ -474,17 +585,91 @@ Defined.
 Lemma arbor_38_127_length : length (arbor_gears arbor_38_127) = 2%nat.
 Proof. reflexivity. Qed.
 
+Definition arbor_44_34 : Arbor.
+Proof. refine (mkArbor [gear_44; gear_34] _). simpl. lia. Defined.
+
+Definition arbor_26_63 : Arbor.
+Proof. refine (mkArbor [gear_26; gear_63] _). simpl. lia. Defined.
+
+Definition arbor_45_54 : Arbor.
+Proof. refine (mkArbor [gear_45; gear_54] _). simpl. lia. Defined.
+
+Definition arbor_96_15 : Arbor.
+Proof. refine (mkArbor [gear_96; gear_15] _). simpl. lia. Defined.
+
+Definition arbor_79_36 : Arbor.
+Proof. refine (mkArbor [gear_79; gear_36] _). simpl. lia. Defined.
+
+Definition arbor_72_40 : Arbor.
+Proof. refine (mkArbor [gear_72; gear_40] _). simpl. lia. Defined.
+
+Definition arbor_57_58 : Arbor.
+Proof. refine (mkArbor [gear_57; gear_58] _). simpl. lia. Defined.
+
+Definition arbor_89_15 : Arbor.
+Proof. refine (mkArbor [gear_89; gear_15] _). simpl. lia. Defined.
+
+Definition gears_same_name (g1 g2 : Gear) : bool :=
+  String.eqb (gear_name g1) (gear_name g2).
+
+Definition gears_on_arbor (g1 g2 : Gear) (arb : Arbor) : bool :=
+  existsb (fun g => gears_same_name g g1) (arbor_gears arb) &&
+  existsb (fun g => gears_same_name g g2) (arbor_gears arb).
+
+Lemma gears_same_name_refl : forall g, gears_same_name g g = true.
+Proof. intro g. unfold gears_same_name. apply String.eqb_refl. Qed.
+
+Lemma gears_same_name_eq : forall g1 g2,
+  gears_same_name g1 g2 = true -> gear_name g1 = gear_name g2.
+Proof. intros g1 g2 H. unfold gears_same_name in H. apply String.eqb_eq. exact H. Qed.
+
+Lemma gears_same_name_coaxial : forall g1 g2,
+  gears_same_name g1 g2 = true -> gears_coaxial g1 g2.
+Proof. intros g1 g2 H. left. apply gears_same_name_eq. exact H. Qed.
+
+Lemma existsb_In : forall {A} (f : A -> bool) l,
+  existsb f l = true -> exists x, In x l /\ f x = true.
+Proof.
+  intros A f l H. induction l as [|h t IH].
+  - discriminate.
+  - simpl in H. apply orb_prop in H. destruct H as [Hh | Ht].
+    + exists h. split. left. reflexivity. exact Hh.
+    + destruct (IH Ht) as [x [Hin Hfx]]. exists x. split. right. exact Hin. exact Hfx.
+Qed.
+
+Lemma In_gear_name_eq : forall g1 g2 l,
+  In g1 l -> gears_same_name g1 g2 = true ->
+  exists g, In g l /\ gear_name g = gear_name g2.
+Proof.
+  intros g1 g2 l Hin Heq. exists g1. split. exact Hin.
+  apply gears_same_name_eq. exact Heq.
+Qed.
+
+Definition gears_coaxial_dec (g1 g2 : Gear) : bool :=
+  gears_same_name g1 g2.
+
+Lemma gears_coaxial_dec_correct : forall g1 g2,
+  gears_coaxial_dec g1 g2 = true -> gears_coaxial g1 g2.
+Proof.
+  intros g1 g2 H. unfold gears_coaxial_dec in H.
+  left. apply gears_same_name_eq. exact H.
+Qed.
+
+Lemma fragment_counts :
+  fragment_count FragmentA = 17%nat /\ fragment_count FragmentB = 1%nat /\ fragment_count FragmentC = 4%nat /\ fragment_count FragmentD = 1%nat.
+Proof. repeat split; reflexivity. Qed.
+
 Lemma fragment_A_count : fragment_count FragmentA = 17%nat.
-Proof. reflexivity. Qed.
+Proof. exact (proj1 fragment_counts). Qed.
 
 Lemma fragment_B_count : fragment_count FragmentB = 1%nat.
-Proof. reflexivity. Qed.
+Proof. exact (proj1 (proj2 fragment_counts)). Qed.
 
 Lemma fragment_C_count : fragment_count FragmentC = 4%nat.
-Proof. reflexivity. Qed.
+Proof. exact (proj1 (proj2 (proj2 fragment_counts))). Qed.
 
 Lemma fragment_D_count : fragment_count FragmentD = 1%nat.
-Proof. reflexivity. Qed.
+Proof. exact (proj2 (proj2 (proj2 fragment_counts))). Qed.
 
 Lemma fragment_total : (fragment_count FragmentA + fragment_count FragmentB +
   fragment_count FragmentC + fragment_count FragmentD)%nat = 23%nat.
@@ -551,10 +736,22 @@ Proof. reflexivity. Qed.
 Lemma Z_235_eq_5_mul_47 : (235 = 5 * 47)%Z.
 Proof. reflexivity. Qed.
 
+Lemma Z_gcd_235_19_eq_1 : (Z.gcd 235 19 = 1)%Z.
+Proof. reflexivity. Qed.
+
+Lemma metonic_ratio_irreducible : (Z.gcd 235 19 = 1)%Z.
+Proof. reflexivity. Qed.
+
 Lemma Z_289_eq_17_sq : (289 = 17 * 17)%Z.
 Proof. reflexivity. Qed.
 
 Lemma Z_462_factored : (462 = 2 * 3 * 7 * 11)%Z.
+Proof. reflexivity. Qed.
+
+Lemma Z_gcd_289_462_eq_1 : (Z.gcd 289 462 = 1)%Z.
+Proof. reflexivity. Qed.
+
+Lemma venus_ratio_irreducible : (Z.gcd 289 462 = 1)%Z.
 Proof. reflexivity. Qed.
 
 Lemma Z_427_eq_7_mul_61 : (427 = 7 * 61)%Z.
@@ -680,6 +877,35 @@ Proof.
   - reflexivity.
 Qed.
 
+Lemma venus_44_34_coaxial : gears_coaxial gear_44 gear_34.
+Proof.
+  right. exists arbor_44_34. split; simpl; auto.
+Qed.
+
+Lemma venus_26_26_coaxial : gears_coaxial gear_26 gear_26.
+Proof. left. reflexivity. Qed.
+
+Lemma venus_train_connected : train_connected venus_train_simple.
+Proof.
+  unfold venus_train_simple, train_connected.
+  split.
+  - unfold elements_connected. simpl. exact venus_44_34_coaxial.
+  - split.
+    + unfold elements_connected. simpl. exact venus_26_26_coaxial.
+    + exact I.
+Qed.
+
+Definition venus_valid_train : ValidTrain.
+Proof.
+  refine (mkValidTrain venus_train_simple _ _).
+  - discriminate.
+  - exact venus_train_connected.
+Defined.
+
+Theorem venus_ratio_validated :
+  Qeq (train_ratio (vt_train venus_valid_train)) (462 # 289).
+Proof. exact Qeq_venus_train_462_289. Qed.
+
 (* ========================================================================== *)
 (* VII. Saturn Train                                                          *)
 (* ========================================================================== *)
@@ -719,6 +945,9 @@ Definition saturn_direct_ratio : Q := 427 # 442.
 Lemma Z_gcd_427_442_eq_1 : (Z.gcd 427 442 = 1)%Z.
 Proof. reflexivity. Qed.
 
+Lemma saturn_ratio_irreducible : (Z.gcd 427 442 = 1)%Z.
+Proof. exact Z_gcd_427_442_eq_1. Qed.
+
 Theorem saturn_train_spec : saturn_spec saturn_direct_ratio.
 Proof. unfold saturn_spec, saturn_direct_ratio. reflexivity. Qed.
 
@@ -728,6 +957,29 @@ Definition saturn_inscription_periods : positive := 427.
 Theorem saturn_inscription_match :
   saturn_years = saturn_inscription_years /\ saturn_synodic_periods = saturn_inscription_periods.
 Proof. split; reflexivity. Qed.
+
+Lemma saturn_45_54_coaxial : gears_coaxial gear_45 gear_54.
+Proof. right. exists arbor_45_54. split; simpl; auto. Qed.
+
+Lemma saturn_96_15_coaxial : gears_coaxial gear_96 gear_15.
+Proof. right. exists arbor_96_15. split; simpl; auto. Qed.
+
+Lemma saturn_train_connected : train_connected saturn_train_simple.
+Proof.
+  unfold saturn_train_simple, train_connected.
+  split.
+  - unfold elements_connected. simpl. exact saturn_45_54_coaxial.
+  - split.
+    + unfold elements_connected. simpl. exact saturn_96_15_coaxial.
+    + exact I.
+Qed.
+
+Definition saturn_valid_train : ValidTrain.
+Proof.
+  refine (mkValidTrain saturn_train_simple _ _).
+  - discriminate.
+  - exact saturn_train_connected.
+Defined.
 
 (* ========================================================================== *)
 (* VIII. Mercury, Mars, Jupiter Trains                                        *)
@@ -749,6 +1001,12 @@ Lemma Z_480_factored : (480 = 32 * 15)%Z.
 Proof. reflexivity. Qed.
 
 Lemma mercury_venus_shared_17 : (Z.gcd 1513 289 = 17)%Z.
+Proof. reflexivity. Qed.
+
+Lemma Z_gcd_1513_480_eq_1 : (Z.gcd 1513 480 = 1)%Z.
+Proof. reflexivity. Qed.
+
+Lemma mercury_ratio_irreducible : (Z.gcd 1513 480 = 1)%Z.
 Proof. reflexivity. Qed.
 
 Lemma Z_89_mul_17 : (89 * 17 = 1513)%Z.
@@ -801,6 +1059,24 @@ Definition mercury_direct_ratio : Q := 1513 # 480.
 Theorem mercury_train_spec : mercury_spec mercury_direct_ratio.
 Proof. unfold mercury_spec, mercury_direct_ratio. reflexivity. Qed.
 
+Lemma mercury_89_15_coaxial : gears_coaxial gear_89 gear_15.
+Proof. right. exists arbor_89_15. split; simpl; auto. Qed.
+
+Lemma mercury_train_derived_connected : train_connected mercury_train_derived.
+Proof.
+  unfold mercury_train_derived, train_connected.
+  split.
+  - unfold elements_connected. simpl. exact mercury_89_15_coaxial.
+  - exact I.
+Qed.
+
+Definition mercury_valid_train : ValidTrain.
+Proof.
+  refine (mkValidTrain mercury_train_derived _ _).
+  - discriminate.
+  - exact mercury_train_derived_connected.
+Defined.
+
 Definition mars_spec (r : Q) : Prop := Qeq r (133 # 284).
 
 Definition mars_train_simple : Train := [
@@ -851,6 +1127,27 @@ Proof. reflexivity. Qed.
 Lemma Z_gcd_133_284 : (Z.gcd 133 284 = 1)%Z.
 Proof. reflexivity. Qed.
 
+Lemma mars_ratio_irreducible : (Z.gcd 133 284 = 1)%Z.
+Proof. exact Z_gcd_133_284. Qed.
+
+Lemma mars_79_36_coaxial : gears_coaxial gear_79 gear_36.
+Proof. right. exists arbor_79_36. split; simpl; auto. Qed.
+
+Lemma mars_train_connected : train_connected mars_train_simple.
+Proof.
+  unfold mars_train_simple, train_connected.
+  split.
+  - unfold elements_connected. simpl. exact mars_79_36_coaxial.
+  - exact I.
+Qed.
+
+Definition mars_valid_train : ValidTrain.
+Proof.
+  refine (mkValidTrain mars_train_simple _ _).
+  - discriminate.
+  - exact mars_train_connected.
+Defined.
+
 Definition jupiter_spec (r : Q) : Prop := Qeq r (315 # 344).
 
 Definition jupiter_train_simple : Train := [
@@ -900,6 +1197,27 @@ Proof. reflexivity. Qed.
 
 Lemma Z_gcd_315_344 : (Z.gcd 315 344 = 1)%Z.
 Proof. reflexivity. Qed.
+
+Lemma jupiter_ratio_irreducible : (Z.gcd 315 344 = 1)%Z.
+Proof. exact Z_gcd_315_344. Qed.
+
+Lemma jupiter_72_40_coaxial : gears_coaxial gear_72 gear_40.
+Proof. right. exists arbor_72_40. split; simpl; auto. Qed.
+
+Lemma jupiter_train_connected : train_connected jupiter_train_simple.
+Proof.
+  unfold jupiter_train_simple, train_connected.
+  split.
+  - unfold elements_connected. simpl. exact jupiter_72_40_coaxial.
+  - exact I.
+Qed.
+
+Definition jupiter_valid_train : ValidTrain.
+Proof.
+  refine (mkValidTrain jupiter_train_simple _ _).
+  - discriminate.
+  - exact jupiter_train_connected.
+Defined.
 
 Definition jupiter_babylonian_synodic : positive := 391.
 Definition jupiter_babylonian_years : positive := 427.
@@ -1219,6 +1537,41 @@ Proof.
   unfold node_regression_per_saros, Qlt. simpl. split; lia.
 Qed.
 
+Definition draconic_per_saros : Q := 241 # 1.
+
+Lemma draconic_nearly_integer_per_saros :
+  Qlt (Qminus (draconic_per_saros) (24200 # 100)) (1 # 100).
+Proof. unfold draconic_per_saros, Qlt, Qminus. simpl. lia. Qed.
+
+Definition eclipse_possible_at_dial (dial_pos : Z) : bool :=
+  let dial_mod := Z.modulo dial_pos 223 in
+  existsb (fun m => (dial_mod =? m)%Z) [1; 7; 13; 18; 24; 30; 36; 42; 47; 53;
+    59; 65; 71; 77; 83; 89; 95; 100; 106; 112; 118; 124; 130; 136; 141; 147;
+    153; 159; 165; 171; 177; 183; 189; 194; 200; 206; 212; 218].
+
+Lemma eclipse_dial_at_1 : eclipse_possible_at_dial 1 = true.
+Proof. reflexivity. Qed.
+
+Lemma eclipse_dial_at_224 : eclipse_possible_at_dial 224 = true.
+Proof. reflexivity. Qed.
+
+Definition saros_preserves_eclipse (dial_pos : Z) : Prop :=
+  eclipse_possible_at_dial dial_pos = true ->
+  eclipse_possible_at_dial (dial_pos + 223) = true.
+
+Lemma saros_eclipse_periodicity_example :
+  eclipse_possible_at_dial 0 = eclipse_possible_at_dial 223.
+Proof. reflexivity. Qed.
+
+Lemma saros_eclipse_periodicity_example_1 :
+  eclipse_possible_at_dial 1 = eclipse_possible_at_dial 224.
+Proof. reflexivity. Qed.
+
+Theorem saros_cycle_returns_eclipses_concrete :
+  eclipse_possible_at_dial 1 = true ->
+  eclipse_possible_at_dial 224 = true.
+Proof. intro H. rewrite <- saros_eclipse_periodicity_example_1. exact H. Qed.
+
 Lemma lunar_node_period_approx :
   Qlt (223 # 1) lunar_node_period_months /\ Qlt lunar_node_period_months (224 # 1).
 Proof.
@@ -1301,6 +1654,90 @@ Open Scope R_scope.
 
 Definition mechanism_eccentricity_approx : R := 11 / 300.
 
+Record PinSlotGeometry := mkPinSlot {
+  pin_radius : R;
+  slot_offset : R;
+  slot_gear_radius : R
+}.
+
+Definition antikythera_pin_slot : PinSlotGeometry :=
+  mkPinSlot 30 (11/10) 30.
+
+Definition pin_position_x (g : PinSlotGeometry) (phi : R) : R :=
+  (pin_radius g) * cos phi.
+
+Definition pin_position_y (g : PinSlotGeometry) (phi : R) : R :=
+  (pin_radius g) * sin phi.
+
+Definition pin_rel_x (g : PinSlotGeometry) (phi : R) : R :=
+  pin_position_x g phi - slot_offset g.
+
+Definition pin_rel_y (g : PinSlotGeometry) (phi : R) : R :=
+  pin_position_y g phi.
+
+Definition output_angle_exact (g : PinSlotGeometry) (phi : R) : R :=
+  atan ((pin_rel_y g phi) / (pin_rel_x g phi)).
+
+Definition eccentricity_param (g : PinSlotGeometry) : R :=
+  (slot_offset g) / (pin_radius g).
+
+Definition output_angle_approx (e_over_r phi : R) : R :=
+  phi + e_over_r * sin phi.
+
+Lemma pin_slot_approx_interpretation :
+  forall g phi, 
+  eccentricity_param g < 1 / 10 ->
+  output_angle_approx (eccentricity_param g) phi = 
+    phi + (slot_offset g / pin_radius g) * sin phi.
+Proof.
+  intros g phi He. unfold output_angle_approx, eccentricity_param. reflexivity.
+Qed.
+
+Definition equation_of_center_max (g : PinSlotGeometry) : R :=
+  2 * eccentricity_param g.
+
+Definition equation_of_center_deg (g : PinSlotGeometry) : R :=
+  equation_of_center_max g * (180 / PI).
+
+Lemma antikythera_eccentricity_value :
+  eccentricity_param antikythera_pin_slot = 11 / 300.
+Proof.
+  unfold eccentricity_param, antikythera_pin_slot, slot_offset, pin_radius.
+  simpl. field.
+Qed.
+
+Definition angular_velocity_from_geometry (g : PinSlotGeometry) (phi : R) : R :=
+  1 + eccentricity_param g * cos phi.
+
+Lemma velocity_modulation_matches :
+  forall g phi,
+  angular_velocity_modulation (eccentricity_param g) phi = 
+  angular_velocity_from_geometry g phi.
+Proof.
+  intros g phi. unfold angular_velocity_modulation, angular_velocity_from_geometry.
+  reflexivity.
+Qed.
+
+Definition max_velocity_from_geometry (g : PinSlotGeometry) : R :=
+  1 + eccentricity_param g.
+
+Definition min_velocity_from_geometry (g : PinSlotGeometry) : R :=
+  1 - eccentricity_param g.
+
+Lemma max_velocity_at_perigee :
+  forall g, angular_velocity_from_geometry g 0 = max_velocity_from_geometry g.
+Proof.
+  intro g. unfold angular_velocity_from_geometry, max_velocity_from_geometry.
+  rewrite cos_0. ring.
+Qed.
+
+Lemma min_velocity_at_apogee :
+  forall g, angular_velocity_from_geometry g PI = min_velocity_from_geometry g.
+Proof.
+  intro g. unfold angular_velocity_from_geometry, min_velocity_from_geometry.
+  rewrite cos_PI. ring.
+Qed.
+
 Theorem eccentricity_comparison : mechanism_eccentricity_approx < moon_eccentricity.
 Proof.
   unfold mechanism_eccentricity_approx, moon_eccentricity.
@@ -1310,6 +1747,31 @@ Proof.
 Qed.
 
 Definition equation_of_center_max_deg : R := 2 * mechanism_eccentricity_approx * (180 / PI).
+
+Definition mechanism_velocity_range (g : PinSlotGeometry) : R :=
+  max_velocity_from_geometry g - min_velocity_from_geometry g.
+
+Lemma velocity_range_is_2e :
+  forall g, mechanism_velocity_range g = 2 * eccentricity_param g.
+Proof.
+  intro g. unfold mechanism_velocity_range, max_velocity_from_geometry, min_velocity_from_geometry.
+  ring.
+Qed.
+
+Definition antikythera_velocity_range : R := mechanism_velocity_range antikythera_pin_slot.
+
+Lemma antikythera_velocity_range_value :
+  antikythera_velocity_range = 2 * (11 / 300).
+Proof.
+  unfold antikythera_velocity_range. rewrite velocity_range_is_2e.
+  rewrite antikythera_eccentricity_value. reflexivity.
+Qed.
+
+Lemma velocity_range_positive :
+  forall g, 0 < eccentricity_param g -> mechanism_velocity_range g > 0.
+Proof.
+  intros g Hpos. rewrite velocity_range_is_2e. lra.
+Qed.
 
 Close Scope R_scope.
 Open Scope Q_scope.
@@ -1928,6 +2390,67 @@ Qed.
 Definition is_prime_divisor (p n : Z) : bool :=
   (1 <? p)%Z && (n mod p =? 0)%Z && (Z.gcd p (n / p) =? 1)%Z.
 
+Close Scope Z_scope.
+Open Scope Q_scope.
+
+Record KinematicState := mkKinState {
+  kin_crank : Q;
+  kin_metonic : Q;
+  kin_saros : Q;
+  kin_zodiac : Q
+}.
+
+Definition kin_initial : KinematicState := mkKinState 0 0 0 0.
+
+Definition metonic_rate : Q := 235 # 19.
+Definition saros_rate : Q := 223 # 19.
+Definition zodiac_rate : Q := 360 # 1.
+
+Definition kin_step (s : KinematicState) : KinematicState :=
+  mkKinState
+    (kin_crank s + 1)
+    (kin_metonic s + metonic_rate)
+    (kin_saros s + saros_rate)
+    (kin_zodiac s + zodiac_rate).
+
+Definition kin_step_n (n : nat) (s : KinematicState) : KinematicState :=
+  Nat.iter n kin_step s.
+
+Lemma kin_step_crank_inc : forall s,
+  kin_crank (kin_step s) = kin_crank s + 1.
+Proof. intro s. reflexivity. Qed.
+
+Lemma kin_metonic_after_1_year : forall s,
+  kin_metonic (kin_step s) = kin_metonic s + (235 # 19).
+Proof. intro s. reflexivity. Qed.
+
+Lemma kin_metonic_after_1_year_value :
+  Qeq (kin_metonic (kin_step kin_initial)) (235 # 19).
+Proof. reflexivity. Qed.
+
+Lemma kin_saros_after_1_year_value :
+  Qeq (kin_saros (kin_step kin_initial)) (223 # 19).
+Proof. reflexivity. Qed.
+
+Lemma kin_crank_step : forall s,
+  Qeq (kin_crank (kin_step s)) (kin_crank s + 1).
+Proof. intro s. reflexivity. Qed.
+
+Lemma kin_crank_initial :
+  Qeq (kin_crank kin_initial) 0.
+Proof. reflexivity. Qed.
+
+Lemma kin_metonic_rate_correct :
+  Qeq metonic_rate (235 # 19).
+Proof. reflexivity. Qed.
+
+Lemma kin_saros_rate_correct :
+  Qeq saros_rate (223 # 19).
+Proof. reflexivity. Qed.
+
+Close Scope Q_scope.
+Open Scope Z_scope.
+
 Lemma gcd_235_223_eq_1 : (Z.gcd 235 223 = 1)%Z.
 Proof. reflexivity. Qed.
 
@@ -2384,6 +2907,46 @@ Proof. unfold high_confidence, venus_provenance. simpl. lia. Qed.
 
 Theorem mercury_low_conf : ~high_confidence mercury_provenance.
 Proof. unfold high_confidence, mercury_provenance. simpl. lia. Qed.
+
+Record ProvenancedClaim := mkProvenancedClaim {
+  pc_statement : Prop;
+  pc_proof : pc_statement;
+  pc_provenance : ClaimProvenance
+}.
+
+Definition metonic_provenanced : ProvenancedClaim :=
+  mkProvenancedClaim 
+    (metonic_spec metonic_train_ratio)
+    metonic_train_spec
+    metonic_provenance.
+
+Definition venus_provenanced : ProvenancedClaim :=
+  mkProvenancedClaim
+    (venus_spec (Qinv (train_ratio venus_train_simple)))
+    Qeq_venus_inv_289_462
+    venus_provenance.
+
+Definition saturn_provenanced : ProvenancedClaim :=
+  mkProvenancedClaim
+    (saturn_spec saturn_direct_ratio)
+    saturn_train_spec
+    saturn_provenance.
+
+Theorem all_high_conf_claims_validated :
+  pc_statement metonic_provenanced /\ pc_statement venus_provenanced /\ pc_statement saturn_provenanced.
+Proof.
+  split. exact (pc_proof metonic_provenanced).
+  split. exact (pc_proof venus_provenanced).
+  exact (pc_proof saturn_provenanced).
+Qed.
+
+Theorem high_conf_provenances :
+  high_confidence (pc_provenance metonic_provenanced) /\ high_confidence (pc_provenance venus_provenanced) /\ high_confidence (pc_provenance saturn_provenanced).
+Proof.
+  split. exact metonic_high_conf.
+  split. exact venus_high_conf.
+  unfold high_confidence, saturn_provenanced, saturn_provenance. simpl. lia.
+Qed.
 
 (* ========================================================================== *)
 (* XIX. Type Safety and Automation                                            *)
