@@ -401,9 +401,11 @@ Definition gear_57 := mkGear "57" 57 false Hypothetical None.
 Definition gear_58 := mkGear "58" 58 false Hypothetical None.
 Definition gear_59 := mkGear "59" 59 false Hypothetical None.
 Definition gear_79 := mkGear "79" 79 false Hypothetical None.
+Definition gear_19 := mkGear "19" 19 false Hypothetical None.
+Definition gear_43 := mkGear "43" 43 false Hypothetical None.
 
 Definition hypothetical_gears_freeth_2021 : list Gear :=
-  [gear_20; gear_68; gear_71; gear_80; gear_44; gear_34; gear_26; gear_72; gear_89; gear_40].
+  [gear_20; gear_68; gear_71; gear_80; gear_44; gear_34; gear_26; gear_72; gear_89; gear_40; gear_19; gear_43].
 
 Lemma hypothetical_all_under_100 :
   forallb (fun g => Pos.leb (teeth g) 100) hypothetical_gears_freeth_2021 = true.
@@ -608,6 +610,12 @@ Proof. refine (mkArbor [gear_57; gear_58] _). simpl. lia. Defined.
 
 Definition arbor_89_15 : Arbor.
 Proof. refine (mkArbor [gear_89; gear_15] _). simpl. lia. Defined.
+
+Definition arbor_19_36 : Arbor.
+Proof. refine (mkArbor [gear_19; gear_36] _). simpl. lia. Defined.
+
+Definition arbor_63_24 : Arbor.
+Proof. refine (mkArbor [gear_63; gear_24] _). simpl. lia. Defined.
 
 Definition gears_same_name (g1 g2 : Gear) : bool :=
   String.eqb (gear_name g1) (gear_name g2).
@@ -1130,6 +1138,57 @@ Proof. reflexivity. Qed.
 Lemma mars_ratio_irreducible : (Z.gcd 133 284 = 1)%Z.
 Proof. exact Z_gcd_133_284. Qed.
 
+(* ========================================================================== *)
+(* Mars Correct Train: 133/284 = (19/71) * (63/36)                            *)
+(* Factorization: 133 = 7*19, 284 = 4*71                                      *)
+(* Train product: (19*63)/(71*36) = 1197/2556 = 133/284                       *)
+(* ========================================================================== *)
+
+Definition mars_train_correct : Train := [
+  SimpleMesh (mkMesh gear_71 gear_19 Clockwise);
+  SimpleMesh (mkMesh gear_36 gear_63 CounterClockwise)
+].
+
+Lemma Z_19_mul_63 : (19 * 63 = 1197)%Z.
+Proof. reflexivity. Qed.
+
+Lemma Z_71_mul_36 : (71 * 36 = 2556)%Z.
+Proof. reflexivity. Qed.
+
+Lemma Z_gcd_1197_2556 : (Z.gcd 1197 2556 = 9)%Z.
+Proof. reflexivity. Qed.
+
+Lemma Z_1197_div_9 : (1197 / 9 = 133)%Z.
+Proof. reflexivity. Qed.
+
+Lemma Z_2556_div_9 : (2556 / 9 = 284)%Z.
+Proof. reflexivity. Qed.
+
+Lemma Qeq_mars_correct_133_284 :
+  Qeq (train_ratio mars_train_correct) (133 # 284).
+Proof. unfold Qeq. simpl. reflexivity. Qed.
+
+Theorem mars_train_correct_spec : mars_spec (train_ratio mars_train_correct).
+Proof. unfold mars_spec. exact Qeq_mars_correct_133_284. Qed.
+
+Lemma mars_19_36_coaxial : gears_coaxial gear_19 gear_36.
+Proof. right. exists arbor_19_36. split; simpl; auto. Qed.
+
+Lemma mars_train_correct_connected : train_connected mars_train_correct.
+Proof.
+  unfold mars_train_correct, train_connected.
+  split.
+  - unfold elements_connected. simpl. exact mars_19_36_coaxial.
+  - exact I.
+Qed.
+
+Definition mars_correct_valid_train : ValidTrain.
+Proof.
+  refine (mkValidTrain mars_train_correct _ _).
+  - discriminate.
+  - exact mars_train_correct_connected.
+Defined.
+
 Lemma mars_79_36_coaxial : gears_coaxial gear_79 gear_36.
 Proof. right. exists arbor_79_36. split; simpl; auto. Qed.
 
@@ -1200,6 +1259,57 @@ Proof. reflexivity. Qed.
 
 Lemma jupiter_ratio_irreducible : (Z.gcd 315 344 = 1)%Z.
 Proof. exact Z_gcd_315_344. Qed.
+
+(* ========================================================================== *)
+(* Jupiter Correct Train: 315/344 = (63/43) * (15/24)                         *)
+(* Factorization: 315 = 5*7*9, 344 = 8*43                                     *)
+(* Train product: (63*15)/(43*24) = 945/1032 = 315/344                        *)
+(* ========================================================================== *)
+
+Definition jupiter_train_correct : Train := [
+  SimpleMesh (mkMesh gear_43 gear_63 Clockwise);
+  SimpleMesh (mkMesh gear_24 gear_15 CounterClockwise)
+].
+
+Lemma Z_63_mul_15 : (63 * 15 = 945)%Z.
+Proof. reflexivity. Qed.
+
+Lemma Z_43_mul_24 : (43 * 24 = 1032)%Z.
+Proof. reflexivity. Qed.
+
+Lemma Z_gcd_945_1032 : (Z.gcd 945 1032 = 3)%Z.
+Proof. reflexivity. Qed.
+
+Lemma Z_945_div_3 : (945 / 3 = 315)%Z.
+Proof. reflexivity. Qed.
+
+Lemma Z_1032_div_3 : (1032 / 3 = 344)%Z.
+Proof. reflexivity. Qed.
+
+Lemma Qeq_jupiter_correct_315_344 :
+  Qeq (train_ratio jupiter_train_correct) (315 # 344).
+Proof. unfold Qeq. simpl. reflexivity. Qed.
+
+Theorem jupiter_train_correct_spec : jupiter_spec (train_ratio jupiter_train_correct).
+Proof. unfold jupiter_spec. exact Qeq_jupiter_correct_315_344. Qed.
+
+Lemma jupiter_63_24_coaxial : gears_coaxial gear_63 gear_24.
+Proof. right. exists arbor_63_24. split; simpl; auto. Qed.
+
+Lemma jupiter_train_correct_connected : train_connected jupiter_train_correct.
+Proof.
+  unfold jupiter_train_correct, train_connected.
+  split.
+  - unfold elements_connected. simpl. exact jupiter_63_24_coaxial.
+  - exact I.
+Qed.
+
+Definition jupiter_correct_valid_train : ValidTrain.
+Proof.
+  refine (mkValidTrain jupiter_train_correct _ _).
+  - discriminate.
+  - exact jupiter_train_correct_connected.
+Defined.
 
 Lemma jupiter_72_40_coaxial : gears_coaxial gear_72 gear_40.
 Proof. right. exists arbor_72_40. split; simpl; auto. Qed.
@@ -2818,8 +2928,8 @@ Definition mechanism_completeness : Prop :=
   metonic_spec metonic_train_ratio /\
   venus_spec (Qinv (train_ratio venus_train_simple)) /\
   saturn_spec saturn_direct_ratio /\
-  mars_spec mars_direct_ratio /\
-  jupiter_spec jupiter_direct_ratio /\
+  mars_spec (train_ratio mars_train_correct) /\
+  jupiter_spec (train_ratio jupiter_train_correct) /\
   calendar_type_lunar /\
   games_sectors antikythera_games_dial = 4%positive /\
   zodiac_divisions antikythera_zodiac = 360%positive.
@@ -2830,8 +2940,8 @@ Proof.
   split. exact metonic_train_spec.
   split. unfold venus_spec. exact Qeq_venus_inv_289_462.
   split. exact saturn_train_spec.
-  split. exact mars_train_spec.
-  split. exact jupiter_train_spec.
+  split. exact mars_train_correct_spec.
+  split. exact jupiter_train_correct_spec.
   split. exact calendar_354.
   split; reflexivity.
 Qed.
@@ -3010,3 +3120,4 @@ Qed.
 (* ========================================================================== *)
 (* END                                                                        *)
 (* ========================================================================== *)
+ 
