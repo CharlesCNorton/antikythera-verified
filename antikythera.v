@@ -38,15 +38,51 @@ Open Scope string_scope.
 
 Open Scope Z_scope.
 
+(* -------------------------------------------------------------------------- *)
+(* Fragment                                                                   *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Price 1974 "Gears from the Greeks"; Freeth et al. 2006 Nature   *)
+(* EVIDENCE:  82 physical pieces recovered 1901 from Antikythera shipwreck;   *)
+(*            7 major fragments labeled A-G by Price; CT scanned 2005-2006    *)
+(* SEMANTICS: FragmentA (largest, 27 gears), FragmentB (Metonic spiral),      *)
+(*            FragmentC (gear cluster 48/24/127), FragmentD (gear 63),        *)
+(*            FragmentE-G (minor); Hypothetical marks reconstructed elements  *)
+(* -------------------------------------------------------------------------- *)
 Inductive Fragment : Set :=
   | FragmentA | FragmentB | FragmentC | FragmentD
   | FragmentE | FragmentF | FragmentG | Hypothetical.
 
+(* -------------------------------------------------------------------------- *)
+(* RotationDirection                                                          *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006; Wright 2007 reconstruction                  *)
+(* EVIDENCE:  Gear mesh analysis from CT imaging; physical reconstructions    *)
+(* SEMANTICS: External gears reverse direction when meshed; direction tracked *)
+(*            to verify output pointer rotations match dial conventions       *)
+(* -------------------------------------------------------------------------- *)
 Inductive RotationDirection : Set := Clockwise | CounterClockwise.
 
+(* -------------------------------------------------------------------------- *)
+(* flip_direction                                                             *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Standard gear mechanics                                         *)
+(* EVIDENCE:  When two external gears mesh, driver and driven rotate opposite *)
+(* SEMANTICS: Models direction reversal at each mesh point in gear train      *)
+(* -------------------------------------------------------------------------- *)
 Definition flip_direction (d : RotationDirection) : RotationDirection :=
   match d with Clockwise => CounterClockwise | CounterClockwise => Clockwise end.
 
+(* -------------------------------------------------------------------------- *)
+(* Gear                                                                       *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006 Nature; Supplementary Notes Table S1         *)
+(* EVIDENCE:  CT scanning revealed 30 surviving gears with measurable teeth;  *)
+(*            tooth counts estimated from radius and module (0.4-0.6 mm)      *)
+(* SEMANTICS: gear_name: identifier; teeth: tooth count (positive integer);   *)
+(*            ct_observed: true if physically confirmed by CT scan;           *)
+(*            fragment: which physical piece contains this gear;              *)
+(*            tooth_uncertainty: measurement error bound (None if exact)      *)
+(* -------------------------------------------------------------------------- *)
 Record Gear := mkGear {
   gear_name : string;
   teeth : positive;
@@ -55,72 +91,189 @@ Record Gear := mkGear {
   tooth_uncertainty : option positive
 }.
 
+(* -------------------------------------------------------------------------- *)
+(* Mesh                                                                       *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006; gear train analysis                         *)
+(* EVIDENCE:  CT imaging shows gear positions and mesh relationships          *)
+(* SEMANTICS: Two gears in contact; driver transmits motion to driven;        *)
+(*            ratio = driven_teeth / driver_teeth; direction reverses         *)
+(* -------------------------------------------------------------------------- *)
 Record Mesh := mkMesh {
   driver : Gear;
   driven : Gear;
   driver_direction : RotationDirection
 }.
 
+(* -------------------------------------------------------------------------- *)
+(* driven_direction                                                           *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Standard gear mechanics                                         *)
+(* EVIDENCE:  External gear mesh reverses rotation direction                  *)
+(* SEMANTICS: Computes output direction from input direction of a mesh        *)
+(* -------------------------------------------------------------------------- *)
 Definition driven_direction (m : Mesh) : RotationDirection := flip_direction (driver_direction m).
 
+(* -------------------------------------------------------------------------- *)
+(* gear_ratio                                                                 *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Standard gear mechanics; Freeth et al. 2006 ratio calculations  *)
+(* EVIDENCE:  Gear ratio = driven_teeth / driver_teeth (frequency ratio)      *)
+(* SEMANTICS: Returns rational number representing angular velocity ratio;    *)
+(*            if ratio > 1, driven rotates slower than driver                 *)
+(* -------------------------------------------------------------------------- *)
 Definition gear_ratio (m : Mesh) : Q := (Zpos (teeth (driven m))) # (teeth (driver m)).
 
+(* -------------------------------------------------------------------------- *)
+(* driver_neq_driven                                                          *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Physical constraint                                             *)
+(* EVIDENCE:  A gear cannot mesh with itself                                  *)
+(* SEMANTICS: Validity predicate ensuring distinct gears in a mesh            *)
+(* -------------------------------------------------------------------------- *)
 Definition driver_neq_driven (m : Mesh) : Prop :=
   gear_name (driver m) <> gear_name (driven m).
 
+(* -------------------------------------------------------------------------- *)
+(* ValidMesh                                                                  *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Physical constraint                                             *)
+(* EVIDENCE:  All observed meshes in mechanism involve distinct gears         *)
+(* SEMANTICS: Mesh bundled with proof of validity (distinct driver/driven)    *)
+(* -------------------------------------------------------------------------- *)
 Record ValidMesh := mkValidMesh {
   vm_mesh : Mesh;
   vm_distinct : driver_neq_driven vm_mesh
 }.
 
+(* -------------------------------------------------------------------------- *)
+(* valid_tooth_count                                                          *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006 Supplementary Notes; CT measurements         *)
+(* EVIDENCE:  Observed gears range from 15 teeth (smallest) to 223 (largest); *)
+(*            module constraint ~0.5mm limits minimum practical tooth count   *)
+(* SEMANTICS: Predicate for physically plausible tooth counts                 *)
+(* -------------------------------------------------------------------------- *)
 Definition valid_tooth_count (n : positive) : Prop := (15 <= Zpos n <= 223)%Z.
 
-
+(* -------------------------------------------------------------------------- *)
+(* Arbor                                                                      *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Wright 2007; mechanism reconstruction                           *)
+(* EVIDENCE:  Multiple gears mounted on shared axles observed in CT scans     *)
+(* SEMANTICS: Gears sharing an axis rotate together at same angular velocity; *)
+(*            enables compound gear trains with intermediate ratios           *)
+(* -------------------------------------------------------------------------- *)
 Record Arbor := mkArbor {
   arbor_gears : list Gear;
   arbor_constraint : (length arbor_gears >= 1)%nat
 }.
 
+(* -------------------------------------------------------------------------- *)
+(* CoaxialArbor                                                               *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Wright 2007; mechanism reconstruction                           *)
+(* EVIDENCE:  Concentric axles observed (e.g., moon pointer assembly)         *)
+(* SEMANTICS: Multiple arbors sharing same geometric axis but rotating        *)
+(*            independently; enables nested pointer displays                  *)
+(* -------------------------------------------------------------------------- *)
 Record CoaxialArbor := mkCoaxialArbor {
   coax_gears : list Gear;
   coax_min_gears : (length coax_gears >= 1)%nat;
   coax_shared_axis : string
 }.
 
+(* -------------------------------------------------------------------------- *)
+(* TrainElement                                                               *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Standard gear train analysis; Freeth et al. 2006                *)
+(* EVIDENCE:  Mechanism uses both direct meshes and arbor transfers           *)
+(* SEMANTICS: SimpleMesh: direct gear engagement with ratio change;           *)
+(*            ArborTransfer: same-arbor transfer with ratio 1:1               *)
+(* -------------------------------------------------------------------------- *)
 Inductive TrainElement : Set :=
   | SimpleMesh : Mesh -> TrainElement
   | ArborTransfer : Gear -> Gear -> TrainElement.
 
+(* -------------------------------------------------------------------------- *)
+(* train_element_ratio                                                        *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Standard gear mechanics                                         *)
+(* EVIDENCE:  Mesh changes speed by gear ratio; arbor transfer preserves it   *)
+(* SEMANTICS: Returns ratio contribution of single train element              *)
+(* -------------------------------------------------------------------------- *)
 Definition train_element_ratio (e : TrainElement) : Q :=
   match e with
   | SimpleMesh m => gear_ratio m
   | ArborTransfer _ _ => 1 # 1
   end.
 
+(* -------------------------------------------------------------------------- *)
+(* Train                                                                      *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006; gear train reconstruction                   *)
+(* EVIDENCE:  Mechanism contains multiple compound gear trains                *)
+(* SEMANTICS: Sequence of train elements; total ratio is product of elements  *)
+(* -------------------------------------------------------------------------- *)
 Definition Train := list TrainElement.
 
+(* -------------------------------------------------------------------------- *)
+(* output_gear                                                                *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Gear train analysis                                             *)
+(* EVIDENCE:  Each train element has an output gear receiving motion          *)
+(* SEMANTICS: Returns the gear that receives motion from this element         *)
+(* -------------------------------------------------------------------------- *)
 Definition output_gear (e : TrainElement) : option Gear :=
   match e with
   | SimpleMesh m => Some (driven m)
   | ArborTransfer _ g2 => Some g2
   end.
 
+(* -------------------------------------------------------------------------- *)
+(* input_gear                                                                 *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Gear train analysis                                             *)
+(* EVIDENCE:  Each train element has an input gear providing motion           *)
+(* SEMANTICS: Returns the gear that provides motion to this element           *)
+(* -------------------------------------------------------------------------- *)
 Definition input_gear (e : TrainElement) : option Gear :=
   match e with
   | SimpleMesh m => Some (driver m)
   | ArborTransfer g1 _ => Some g1
   end.
 
+(* -------------------------------------------------------------------------- *)
+(* gears_coaxial                                                              *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Wright 2007; CT scan gear position analysis                     *)
+(* EVIDENCE:  Gears on same arbor rotate together; CT shows arbor groupings   *)
+(* SEMANTICS: Two gears share an axis (same gear or on same arbor)            *)
+(* -------------------------------------------------------------------------- *)
 Definition gears_coaxial (g1 g2 : Gear) : Prop :=
-  gear_name g1 = gear_name g2 \/ 
+  gear_name g1 = gear_name g2 \/
   exists arb : Arbor, In g1 (arbor_gears arb) /\ In g2 (arbor_gears arb).
 
+(* -------------------------------------------------------------------------- *)
+(* elements_connected                                                         *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Gear train topology analysis                                    *)
+(* EVIDENCE:  Train elements must connect via coaxial gears to transmit power *)
+(* SEMANTICS: Output of e1 shares axis with input of e2                       *)
+(* -------------------------------------------------------------------------- *)
 Definition elements_connected (e1 e2 : TrainElement) : Prop :=
   match output_gear e1, input_gear e2 with
   | Some g1, Some g2 => gears_coaxial g1 g2
   | _, _ => False
   end.
 
+(* -------------------------------------------------------------------------- *)
+(* train_connected                                                            *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Gear train topology analysis                                    *)
+(* EVIDENCE:  Physical gear trains form connected kinematic chains            *)
+(* SEMANTICS: All adjacent elements in train are connected                    *)
+(* -------------------------------------------------------------------------- *)
 Fixpoint train_connected (t : Train) : Prop :=
   match t with
   | nil => True
@@ -128,56 +281,148 @@ Fixpoint train_connected (t : Train) : Prop :=
   | e1 :: ((e2 :: _) as rest) => elements_connected e1 e2 /\ train_connected rest
   end.
 
+(* -------------------------------------------------------------------------- *)
+(* ValidTrain                                                                 *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Physical constraint on gear trains                              *)
+(* EVIDENCE:  Real gear trains are non-empty and fully connected              *)
+(* SEMANTICS: Train bundled with proofs of non-emptiness and connectivity     *)
+(* -------------------------------------------------------------------------- *)
 Record ValidTrain := mkValidTrain {
   vt_train : Train;
   vt_nonempty : vt_train <> nil;
   vt_connected : train_connected vt_train
 }.
 
+(* -------------------------------------------------------------------------- *)
+(* train_ratio                                                                *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Standard gear mechanics; Freeth et al. 2006 ratio derivations   *)
+(* EVIDENCE:  Total gear train ratio is product of individual mesh ratios     *)
+(* SEMANTICS: Computes overall frequency ratio of a gear train                *)
+(* -------------------------------------------------------------------------- *)
 Fixpoint train_ratio (t : Train) : Q :=
   match t with
   | nil => 1#1
   | e :: rest => Qmult (train_element_ratio e) (train_ratio rest)
   end.
 
+(* -------------------------------------------------------------------------- *)
+(* train_ratio_nil                                                            *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Mathematical identity                                           *)
+(* EVIDENCE:  Empty product equals 1 (multiplicative identity)                *)
+(* SEMANTICS: Base case for train ratio computation                           *)
+(* -------------------------------------------------------------------------- *)
 Lemma train_ratio_nil : train_ratio nil = 1#1.
 Proof. reflexivity. Qed.
 
+(* -------------------------------------------------------------------------- *)
+(* train_ratio_cons                                                           *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Mathematical identity                                           *)
+(* EVIDENCE:  Product unfolds as first element times rest                     *)
+(* SEMANTICS: Recursive case for train ratio computation                      *)
+(* -------------------------------------------------------------------------- *)
 Lemma train_ratio_cons : forall e t,
   train_ratio (e :: t) = Qmult (train_element_ratio e) (train_ratio t).
 Proof. reflexivity. Qed.
 
+(* -------------------------------------------------------------------------- *)
+(* arbor_transfer_ratio_1                                                     *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Physical constraint on arbors                                   *)
+(* EVIDENCE:  Gears on same arbor rotate at same speed (1:1 ratio)            *)
+(* SEMANTICS: Arbor transfers contribute ratio 1 to train product             *)
+(* -------------------------------------------------------------------------- *)
 Lemma arbor_transfer_ratio_1 : forall g1 g2, train_element_ratio (ArborTransfer g1 g2) = 1 # 1.
 Proof. reflexivity. Qed.
 
 (* ========================================================================== *)
-(* I-A. Uncertainty Intervals                                                  *)
+(* I-A. Uncertainty Intervals                                                 *)
+(* ========================================================================== *)
+(*                                                                            *)
+(* CT scanning provides gear tooth estimates with measurement uncertainty.    *)
+(* After 2000 years of corrosion, bronze distorted into brittle atacamite;    *)
+(* exact dimensions unavailable. Tooth counts estimated from radius and       *)
+(* module; some gears show clear peaks, others range of possible counts.      *)
+(* Freeth et al. 2006 Supplementary Notes detail estimation procedures.       *)
+(*                                                                            *)
 (* ========================================================================== *)
 
+(* -------------------------------------------------------------------------- *)
+(* QInterval                                                                  *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Interval arithmetic for uncertainty propagation                 *)
+(* EVIDENCE:  Freeth et al. 2006 Supp. Notes: tooth count ranges reported     *)
+(* SEMANTICS: Closed interval [low, high] for rational-valued measurements    *)
+(* -------------------------------------------------------------------------- *)
 Record QInterval := mkInterval {
   interval_low : Q;
   interval_high : Q
 }.
 
+(* -------------------------------------------------------------------------- *)
+(* interval_valid                                                             *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Mathematical constraint                                         *)
+(* EVIDENCE:  Valid intervals have low <= high                                *)
+(* SEMANTICS: Predicate ensuring interval is non-empty                        *)
+(* -------------------------------------------------------------------------- *)
 Definition interval_valid (i : QInterval) : Prop := Qle (interval_low i) (interval_high i).
 
+(* -------------------------------------------------------------------------- *)
+(* point_interval                                                             *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Interval arithmetic                                             *)
+(* EVIDENCE:  Exact values have zero uncertainty                              *)
+(* SEMANTICS: Degenerate interval [q, q] representing exact value q           *)
+(* -------------------------------------------------------------------------- *)
 Definition point_interval (q : Q) : QInterval := mkInterval q q.
 
+(* -------------------------------------------------------------------------- *)
+(* gear_uncertainty_valid                                                     *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Physical constraint                                             *)
+(* EVIDENCE:  Uncertainty must be less than total tooth count                 *)
+(* SEMANTICS: Ensures teeth - uncertainty > 0 (positive tooth count)          *)
+(* -------------------------------------------------------------------------- *)
 Definition gear_uncertainty_valid (g : Gear) : Prop :=
   match tooth_uncertainty g with
   | None => True
   | Some u => (Zpos u < Zpos (teeth g))%Z
   end.
 
+(* -------------------------------------------------------------------------- *)
+(* teeth_min                                                                  *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006 Supplementary Notes                          *)
+(* EVIDENCE:  CT measurement gives tooth count ± uncertainty                  *)
+(* SEMANTICS: Lower bound of tooth count interval (teeth - uncertainty)       *)
+(* -------------------------------------------------------------------------- *)
 Definition teeth_min (g : Gear) : positive :=
   match tooth_uncertainty g with
   | None => teeth g
   | Some u => if Pos.ltb u (teeth g) then Pos.sub (teeth g) u else 1%positive
   end.
 
+(* -------------------------------------------------------------------------- *)
+(* teeth_min_positive                                                         *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Physical constraint                                             *)
+(* EVIDENCE:  Gears must have at least 1 tooth                                *)
+(* SEMANTICS: Lower bound is always positive                                  *)
+(* -------------------------------------------------------------------------- *)
 Lemma teeth_min_positive : forall g, (Zpos (teeth_min g) >= 1)%Z.
 Proof. intro g. unfold teeth_min. destruct (tooth_uncertainty g); lia. Qed.
 
+(* -------------------------------------------------------------------------- *)
+(* teeth_min_valid_no_underflow                                               *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Mathematical property                                           *)
+(* EVIDENCE:  Valid uncertainty doesn't underflow tooth count                 *)
+(* SEMANTICS: With valid uncertainty, teeth_min = teeth - uncertainty         *)
+(* -------------------------------------------------------------------------- *)
 Lemma teeth_min_valid_no_underflow : forall g,
   gear_uncertainty_valid g ->
   match tooth_uncertainty g with
@@ -193,12 +438,26 @@ Proof.
   - reflexivity.
 Qed.
 
+(* -------------------------------------------------------------------------- *)
+(* teeth_max                                                                  *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006 Supplementary Notes                          *)
+(* EVIDENCE:  CT measurement gives tooth count ± uncertainty                  *)
+(* SEMANTICS: Upper bound of tooth count interval (teeth + uncertainty)       *)
+(* -------------------------------------------------------------------------- *)
 Definition teeth_max (g : Gear) : positive :=
   match tooth_uncertainty g with
   | None => teeth g
   | Some u => Pos.add (teeth g) u
   end.
 
+(* -------------------------------------------------------------------------- *)
+(* gear_ratio_interval                                                        *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Interval arithmetic; Freeth et al. 2006                         *)
+(* EVIDENCE:  Gear ratio uncertainty propagates from tooth count uncertainty  *)
+(* SEMANTICS: [drn_min/drv_max, drn_max/drv_min] bounds possible ratios       *)
+(* -------------------------------------------------------------------------- *)
 Definition gear_ratio_interval (m : Mesh) : QInterval :=
   let drv_min := teeth_min (driver m) in
   let drv_max := teeth_max (driver m) in
@@ -206,28 +465,106 @@ Definition gear_ratio_interval (m : Mesh) : QInterval :=
   let drn_max := teeth_max (driven m) in
   mkInterval (Zpos drn_min # drv_max) (Zpos drn_max # drv_min).
 
+(* -------------------------------------------------------------------------- *)
+(* interval_mult                                                              *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Interval arithmetic                                             *)
+(* EVIDENCE:  Product of intervals for train ratio uncertainty                *)
+(* SEMANTICS: [a,b] * [c,d] = [a*c, b*d] for positive intervals               *)
+(* -------------------------------------------------------------------------- *)
 Definition interval_mult (i1 i2 : QInterval) : QInterval :=
   mkInterval (Qmult (interval_low i1) (interval_low i2))
              (Qmult (interval_high i1) (interval_high i2)).
 
+(* -------------------------------------------------------------------------- *)
+(* interval_contains                                                          *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Interval arithmetic                                             *)
+(* EVIDENCE:  Membership test for interval                                    *)
+(* SEMANTICS: q ∈ [low, high] iff low <= q <= high                            *)
+(* -------------------------------------------------------------------------- *)
 Definition interval_contains (i : QInterval) (q : Q) : Prop :=
   Qle (interval_low i) q /\ Qle q (interval_high i).
 
+(* -------------------------------------------------------------------------- *)
+(* interval_width                                                             *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Interval arithmetic                                             *)
+(* EVIDENCE:  Width measures uncertainty magnitude                            *)
+(* SEMANTICS: high - low; smaller width = more precise estimate               *)
+(* -------------------------------------------------------------------------- *)
 Definition interval_width (i : QInterval) : Q :=
   interval_high i - interval_low i.
 
+(* -------------------------------------------------------------------------- *)
+(* Qabs_custom                                                                *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Mathematical definition                                         *)
+(* EVIDENCE:  Standard absolute value for error magnitude                     *)
+(* SEMANTICS: |q| = q if q >= 0, else -q                                      *)
+(* -------------------------------------------------------------------------- *)
+Definition Qabs_custom (q : Q) : Q := if Qle_bool 0 q then q else Qopp q.
+
+(* -------------------------------------------------------------------------- *)
+(* Qabs_custom_nonneg                                                         *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Mathematical property                                           *)
+(* EVIDENCE:  Absolute value of non-negative is itself                        *)
+(* SEMANTICS: q >= 0 implies |q| = q                                          *)
+(* -------------------------------------------------------------------------- *)
+Lemma Qabs_custom_nonneg : forall q, Qle_bool 0 q = true -> Qabs_custom q = q.
+Proof. intros q H. unfold Qabs_custom. rewrite H. reflexivity. Qed.
+
+(* -------------------------------------------------------------------------- *)
+(* Qabs_custom_neg                                                            *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Mathematical property                                           *)
+(* EVIDENCE:  Absolute value of negative is negation                          *)
+(* SEMANTICS: q < 0 implies |q| = -q                                          *)
+(* -------------------------------------------------------------------------- *)
+Lemma Qabs_custom_neg : forall q, Qle_bool 0 q = false -> Qabs_custom q = Qopp q.
+Proof. intros q H. unfold Qabs_custom. rewrite H. reflexivity. Qed.
+
+(* -------------------------------------------------------------------------- *)
+(* point_interval_valid                                                       *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Mathematical property                                           *)
+(* EVIDENCE:  [q, q] satisfies q <= q                                         *)
+(* SEMANTICS: Point intervals are always valid                                *)
+(* -------------------------------------------------------------------------- *)
 Lemma point_interval_valid : forall q, interval_valid (point_interval q).
 Proof. intro q. unfold interval_valid, point_interval. simpl. apply Qle_refl. Qed.
 
+(* -------------------------------------------------------------------------- *)
+(* point_interval_contains                                                    *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Mathematical property                                           *)
+(* EVIDENCE:  q is in [q, q]                                                  *)
+(* SEMANTICS: A point interval contains its defining value                    *)
+(* -------------------------------------------------------------------------- *)
 Lemma point_interval_contains : forall q, interval_contains (point_interval q) q.
 Proof.
   intro q. unfold interval_contains, point_interval. simpl.
   split; apply Qle_refl.
 Qed.
 
+(* -------------------------------------------------------------------------- *)
+(* gear_ratio_in_interval                                                     *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Uncertainty analysis                                            *)
+(* EVIDENCE:  Nominal ratio should lie within uncertainty bounds              *)
+(* SEMANTICS: Predicate that gear ratio is within its uncertainty interval    *)
+(* -------------------------------------------------------------------------- *)
 Definition gear_ratio_in_interval (m : Mesh) : Prop :=
   interval_contains (gear_ratio_interval m) (gear_ratio m).
 
+(* -------------------------------------------------------------------------- *)
+(* no_uncertainty_point_interval                                              *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Mathematical property                                           *)
+(* EVIDENCE:  No uncertainty implies exact bounds                             *)
+(* SEMANTICS: teeth_min = teeth_max = teeth when uncertainty is None          *)
+(* -------------------------------------------------------------------------- *)
 Lemma no_uncertainty_point_interval : forall g,
   tooth_uncertainty g = None ->
   teeth_min g = teeth g /\ teeth_max g = teeth g.
@@ -235,14 +572,35 @@ Proof.
   intros g H. unfold teeth_min, teeth_max. rewrite H. split; reflexivity.
 Qed.
 
+(* -------------------------------------------------------------------------- *)
+(* relative_uncertainty                                                       *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006 Supplementary Notes; metrology               *)
+(* EVIDENCE:  Relative uncertainty = uncertainty / measurement                *)
+(* SEMANTICS: Fractional uncertainty in tooth count (0 if exact)              *)
+(* -------------------------------------------------------------------------- *)
 Definition relative_uncertainty (g : Gear) : Q :=
   match tooth_uncertainty g with
   | None => 0 # 1
   | Some u => Zpos u # (teeth g)
   end.
 
+(* -------------------------------------------------------------------------- *)
+(* ct_uncertainty_bound                                                       *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006 Supplementary Notes                          *)
+(* EVIDENCE:  CT-derived tooth counts typically have < 3% relative error      *)
+(* SEMANTICS: Upper bound on relative uncertainty for CT-observed gears       *)
+(* -------------------------------------------------------------------------- *)
 Definition ct_uncertainty_bound : Q := 3 # 100.
 
+(* -------------------------------------------------------------------------- *)
+(* gear_no_uncertainty_ratio_in_interval                                      *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Mathematical property                                           *)
+(* EVIDENCE:  Exact tooth counts yield point interval containing exact ratio  *)
+(* SEMANTICS: With no uncertainty, gear ratio trivially in its own interval   *)
+(* -------------------------------------------------------------------------- *)
 Lemma gear_no_uncertainty_ratio_in_interval : forall m : Mesh,
   tooth_uncertainty (driver m) = None ->
   tooth_uncertainty (driven m) = None ->
@@ -254,27 +612,62 @@ Proof.
   split; apply Qle_refl.
 Qed.
 
+(* -------------------------------------------------------------------------- *)
+(* train_element_interval                                                     *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Interval arithmetic                                             *)
+(* EVIDENCE:  Each train element contributes uncertainty to total ratio       *)
+(* SEMANTICS: Mesh uses gear_ratio_interval; arbor transfer is exact (1:1)    *)
+(* -------------------------------------------------------------------------- *)
 Definition train_element_interval (e : TrainElement) : QInterval :=
   match e with
   | SimpleMesh m => gear_ratio_interval m
   | ArborTransfer _ _ => point_interval (1 # 1)
   end.
 
+(* -------------------------------------------------------------------------- *)
+(* train_ratio_interval                                                       *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Interval arithmetic; uncertainty propagation                    *)
+(* EVIDENCE:  Total train uncertainty is product of element uncertainties     *)
+(* SEMANTICS: Computes interval containing all possible train ratios          *)
+(* -------------------------------------------------------------------------- *)
 Fixpoint train_ratio_interval (t : Train) : QInterval :=
   match t with
   | nil => point_interval (1 # 1)
   | e :: rest => interval_mult (train_element_interval e) (train_ratio_interval rest)
   end.
 
-Lemma train_ratio_interval_nil : 
+(* -------------------------------------------------------------------------- *)
+(* train_ratio_interval_nil                                                   *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Mathematical property                                           *)
+(* EVIDENCE:  Empty product interval is point interval at 1                   *)
+(* SEMANTICS: Base case for interval computation                              *)
+(* -------------------------------------------------------------------------- *)
+Lemma train_ratio_interval_nil :
   train_ratio_interval nil = point_interval (1 # 1).
 Proof. reflexivity. Qed.
 
+(* -------------------------------------------------------------------------- *)
+(* train_ratio_interval_cons                                                  *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Mathematical property                                           *)
+(* EVIDENCE:  Interval product unfolds recursively                            *)
+(* SEMANTICS: Recursive case for interval computation                         *)
+(* -------------------------------------------------------------------------- *)
 Lemma train_ratio_interval_cons : forall e t,
-  train_ratio_interval (e :: t) = 
+  train_ratio_interval (e :: t) =
   interval_mult (train_element_interval e) (train_ratio_interval t).
 Proof. reflexivity. Qed.
 
+(* -------------------------------------------------------------------------- *)
+(* train_all_no_uncertainty                                                   *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Predicate for exact trains                                      *)
+(* EVIDENCE:  Some gear trains have all CT-confirmed exact tooth counts       *)
+(* SEMANTICS: All meshes in train have zero uncertainty                       *)
+(* -------------------------------------------------------------------------- *)
 Definition train_all_no_uncertainty (t : Train) : Prop :=
   forall e, In e t ->
   match e with
@@ -282,10 +675,24 @@ Definition train_all_no_uncertainty (t : Train) : Prop :=
   | ArborTransfer _ _ => True
   end.
 
+(* -------------------------------------------------------------------------- *)
+(* train_ratio_in_interval_nil                                                *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Mathematical property                                           *)
+(* EVIDENCE:  Empty train has ratio 1 in interval [1,1]                       *)
+(* SEMANTICS: Base case soundness for interval containment                    *)
+(* -------------------------------------------------------------------------- *)
 Lemma train_ratio_in_interval_nil :
   interval_contains (train_ratio_interval nil) (train_ratio nil).
 Proof. simpl. apply point_interval_contains. Qed.
 
+(* -------------------------------------------------------------------------- *)
+(* train_element_interval_nonneg                                              *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Physical constraint                                             *)
+(* EVIDENCE:  Gear ratios are positive (positive tooth counts)                *)
+(* SEMANTICS: Lower bound of element interval is non-negative                 *)
+(* -------------------------------------------------------------------------- *)
 Lemma train_element_interval_nonneg : forall e,
   Qle 0 (interval_low (train_element_interval e)).
 Proof.
@@ -294,6 +701,13 @@ Proof.
   - unfold train_element_interval, point_interval, Qle. simpl. lia.
 Qed.
 
+(* -------------------------------------------------------------------------- *)
+(* train_ratio_interval_nonneg                                                *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Mathematical property                                           *)
+(* EVIDENCE:  Product of non-negative intervals is non-negative               *)
+(* SEMANTICS: Train ratio interval has non-negative lower bound               *)
+(* -------------------------------------------------------------------------- *)
 Lemma train_ratio_interval_nonneg : forall t,
   Qle 0 (interval_low (train_ratio_interval t)).
 Proof.
@@ -312,12 +726,59 @@ Qed.
 (* ========================================================================== *)
 (* II. Epicyclic Gearing                                                      *)
 (* ========================================================================== *)
+(*                                                                            *)
+(* The Antikythera mechanism uses epicyclic (planetary) gearing for the lunar *)
+(* anomaly display. Hipparchos (c. 190-120 BC) developed two equivalent lunar *)
+(* theories: eccentric and epicyclic. The pin-and-slot mechanism realizes the *)
+(* epicyclic model, producing non-uniform lunar motion matching observations. *)
+(* Freeth et al. 2006: the mechanism models lunar anomaly to better than 1    *)
+(* part in 200, more accurately than Ptolemy's account of Hipparchos' theory. *)
+(*                                                                            *)
+(* ========================================================================== *)
 
+(* -------------------------------------------------------------------------- *)
+(* EpicyclicCarrier                                                           *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006; epicyclic gear theory                       *)
+(* EVIDENCE:  CT scans show carrier arm structure in Fragment A               *)
+(* SEMANTICS: Carrier arm holding planet gears; input_ratio from driver       *)
+(* -------------------------------------------------------------------------- *)
 Record EpicyclicCarrier := mkCarrier { carrier_input_ratio : Q; carrier_teeth : positive }.
+
+(* -------------------------------------------------------------------------- *)
+(* EpicyclicPlanet                                                            *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006; epicyclic gear theory                       *)
+(* EVIDENCE:  Planet gears observed in CT scans of lunar mechanism            *)
+(* SEMANTICS: Planet gear(s) orbiting on carrier; may have multiple planets   *)
+(* -------------------------------------------------------------------------- *)
 Record EpicyclicPlanet := mkPlanet { planet_teeth : positive; planet_count : positive }.
+
+(* -------------------------------------------------------------------------- *)
+(* EpicyclicSun                                                               *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006; epicyclic gear theory                       *)
+(* EVIDENCE:  Central sun gear in lunar mechanism; fixed in some configs      *)
+(* SEMANTICS: Central gear; sun_fixed indicates if held stationary            *)
+(* -------------------------------------------------------------------------- *)
 Record EpicyclicSun := mkSun { sun_teeth : positive; sun_fixed : bool }.
+
+(* -------------------------------------------------------------------------- *)
+(* EpicyclicRing                                                              *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Epicyclic gear theory (not used in lunar mechanism)             *)
+(* EVIDENCE:  Ring gears possible but not confirmed for lunar display         *)
+(* SEMANTICS: Outer ring gear; ring_output indicates if output is taken here  *)
+(* -------------------------------------------------------------------------- *)
 Record EpicyclicRing := mkRing { ring_teeth : positive; ring_output : bool }.
 
+(* -------------------------------------------------------------------------- *)
+(* EpicyclicTrain                                                             *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006; Wright 2007 reconstruction                  *)
+(* EVIDENCE:  Complete epicyclic assembly observed in lunar mechanism         *)
+(* SEMANTICS: Full epicyclic gear train with carrier, planet, sun, opt. ring  *)
+(* -------------------------------------------------------------------------- *)
 Record EpicyclicTrain := mkEpicyclic {
   epi_carrier : EpicyclicCarrier;
   epi_planet : EpicyclicPlanet;
@@ -325,30 +786,70 @@ Record EpicyclicTrain := mkEpicyclic {
   epi_ring : option EpicyclicRing
 }.
 
-(* NOTE: This formula is specialized for the lunar pin-and-slot mechanism    *)
-(* with sun-fixed configuration. Not a general epicyclic train formula.       *)
-(* For general epicyclic kinematics, see Willis' fundamental circuit theory.  *)
+(* -------------------------------------------------------------------------- *)
+(* lunar_epicyclic_mean_ratio                                                 *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006 Supplementary Notes; Hipparchos lunar theory *)
+(* EVIDENCE:  Derivation from epicyclic kinematics for sun-fixed config       *)
+(* SEMANTICS: Mean output frequency ratio; specialized for lunar pin-and-slot *)
+(* NOTE:      Not a general epicyclic formula; see Willis circuit theory      *)
+(* -------------------------------------------------------------------------- *)
 Definition lunar_epicyclic_mean_ratio (e : EpicyclicTrain) : Q :=
   let Zs := Zpos (sun_teeth (epi_sun e)) in
   let Zp := Zpos (planet_teeth (epi_planet e)) in
   Qmult (carrier_input_ratio (epi_carrier e)) ((Zs + Zp) # (carrier_teeth (epi_carrier e))).
 
+(* -------------------------------------------------------------------------- *)
+(* planetary_output_ratio                                                     *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Epicyclic gear theory                                           *)
+(* EVIDENCE:  Output ratio for planetary gear with sun fixed                  *)
+(* SEMANTICS: output = input * (1 + sun_teeth/planet_teeth)                   *)
+(* -------------------------------------------------------------------------- *)
 Definition planetary_output_ratio (input_ratio : Q) (sun planet : positive) : Q :=
   Qmult input_ratio (1 + (Zpos sun # planet)).
 
+(* -------------------------------------------------------------------------- *)
+(* planetary_output_equal_gears                                               *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Mathematical property                                           *)
+(* EVIDENCE:  Equal sun and planet teeth gives ratio 2:1                      *)
+(* SEMANTICS: Special case: 1 + n/n = 2                                       *)
+(* -------------------------------------------------------------------------- *)
 Lemma planetary_output_equal_gears :
   forall n : positive, Qeq (planetary_output_ratio (1 # 1) n n) (2 # 1).
 Proof.
   intro n. unfold planetary_output_ratio, Qeq, Qmult, Qplus. simpl. lia.
 Qed.
 
+(* -------------------------------------------------------------------------- *)
+(* planetary_output_50_50                                                     *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Mathematical property; lunar mechanism analysis                 *)
+(* EVIDENCE:  50-tooth gears used in pin-and-slot lunar anomaly mechanism     *)
+(* SEMANTICS: With 50/50 gears, output ratio is exactly 2:1                   *)
+(* -------------------------------------------------------------------------- *)
 Lemma planetary_output_50_50 :
   Qeq (planetary_output_ratio (1 # 1) 50 50) (2 # 1).
 Proof. unfold planetary_output_ratio, Qeq, Qmult, Qplus. simpl. reflexivity. Qed.
 
+(* -------------------------------------------------------------------------- *)
+(* lunar_anomaly_epicyclic                                                    *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006; Wright 2007                                 *)
+(* EVIDENCE:  CT scans show 50-tooth gears in lunar epicyclic assembly        *)
+(* SEMANTICS: Configuration for lunar anomaly: 50-tooth carrier/planet/sun    *)
+(* -------------------------------------------------------------------------- *)
 Definition lunar_anomaly_epicyclic : EpicyclicTrain := mkEpicyclic
   (mkCarrier (1 # 1) 50) (mkPlanet 50 1) (mkSun 50 false) None.
 
+(* -------------------------------------------------------------------------- *)
+(* lunar_anomaly_epicyclic_mean_ratio                                         *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006 Supplementary Notes                          *)
+(* EVIDENCE:  50+50=100, 100/50=2, so mean ratio is 2:1                       *)
+(* SEMANTICS: Lunar epicyclic mean ratio verification                         *)
+(* -------------------------------------------------------------------------- *)
 Lemma lunar_anomaly_epicyclic_mean_ratio :
   Qeq (lunar_epicyclic_mean_ratio lunar_anomaly_epicyclic) (2 # 1).
 Proof. unfold lunar_epicyclic_mean_ratio, lunar_anomaly_epicyclic, Qeq. simpl. reflexivity. Qed.
@@ -356,7 +857,36 @@ Proof. unfold lunar_epicyclic_mean_ratio, lunar_anomaly_epicyclic, Qeq. simpl. r
 (* ========================================================================== *)
 (* III. Gear Corpus                                                           *)
 (* ========================================================================== *)
+(*                                                                            *)
+(* The mechanism contains ~30 confirmed gears identified via CT scanning.     *)
+(* Key gears: 223 (Saros cycle), 127 (half Metonic sidereal = 254/2), 38      *)
+(* (contains factor 19). Fragment A contains 27 gears; Fragments B, C, D      *)
+(* each contain 1 additional gear. Hypothetical gears from Freeth 2021        *)
+(* reconstruction fill gaps for planetary displays. Gear module ~0.5mm.       *)
+(*                                                                            *)
+(* CT-CONFIRMED GEARS (ct_observed = true):                                   *)
+(*   b1/e3: 223 teeth - Saros eclipse cycle (223 synodic months)              *)
+(*   127: 127 teeth - Half of 254 sidereal months per Metonic cycle           *)
+(*   38a/38b: 38 teeth - Contains factor 19 (Metonic years)                   *)
+(*   53a/53b/53c: 53 teeth - Lunar apogee period factor                       *)
+(*   50a/50b/50c: 50 teeth - Lunar anomaly epicyclic gears                    *)
+(*   63: 63 teeth - Fragment D, planetary display                             *)
+(*   188: 188±2 teeth - Fragment C, uncertain count                           *)
+(*                                                                            *)
+(* HYPOTHETICAL GEARS (ct_observed = false, Freeth 2021):                     *)
+(*   44, 34, 26: Venus train gears                                            *)
+(*   72, 89, 40: Mercury train gears                                          *)
+(*   Various others for Mars, Jupiter, Saturn planetary displays              *)
+(*                                                                            *)
+(* ========================================================================== *)
 
+(* -------------------------------------------------------------------------- *)
+(* gear_b1                                                                    *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006 Nature; CT scan Fragment A                   *)
+(* EVIDENCE:  223 teeth confirmed; drives Saros eclipse prediction dial       *)
+(* SEMANTICS: 223 = Saros cycle in synodic months (18 years 11 days)          *)
+(* -------------------------------------------------------------------------- *)
 Definition gear_b1 := mkGear "b1" 223 true FragmentA None.
 Definition gear_e3 := mkGear "e3" 223 true FragmentA None.
 Definition gear_127 := mkGear "127" 127 true FragmentA None.
@@ -686,37 +1216,129 @@ Proof. reflexivity. Qed.
 (* ========================================================================== *)
 (* IV. Astronomical Periods                                                   *)
 (* ========================================================================== *)
+(*                                                                            *)
+(* Period relations link astronomical phenomena to whole numbers of years.    *)
+(* Babylonians discovered these through centuries of observation; Greeks      *)
+(* adopted and refined them. The Antikythera mechanism encodes these ratios   *)
+(* in its gear trains. Key sources: Babylonian astronomical diaries; Greek    *)
+(* astronomers Meton (432 BC), Callippus (330 BC), Hipparchos (c. 150 BC).    *)
+(*                                                                            *)
+(* METONIC CYCLE (Meton of Athens, 432 BC):                                   *)
+(*   235 synodic months ≈ 19 tropical years (error < 2 hours over 19 years)   *)
+(*   Used for lunisolar calendar synchronization                              *)
+(*                                                                            *)
+(* CALLIPPIC CYCLE (Callippus, 330 BC):                                       *)
+(*   940 synodic months = 76 years = 4 × Metonic cycle                        *)
+(*   Refinement dropping one day from 4 Metonic cycles for better accuracy    *)
+(*                                                                            *)
+(* SAROS CYCLE (Babylonian, discovered c. 700 BC):                            *)
+(*   223 synodic months ≈ 6585.32 days ≈ 18 years 11 days 8 hours             *)
+(*   Eclipse repetition cycle (same Sun-Moon-Node geometry)                   *)
+(*                                                                            *)
+(* EXELIGMOS (3 × Saros):                                                     *)
+(*   669 synodic months ≈ 54 years 33 days                                    *)
+(*   Eliminates 8-hour Saros remainder; eclipses at same longitude            *)
+(*                                                                            *)
+(* PLANETARY PERIOD RELATIONS (Babylonian, refined by Greeks):                *)
+(*   Venus: 289 synodic periods in 462 years (FCI inscription: 462)           *)
+(*   Saturn: 427 synodic periods in 442 years (FCI inscription: 442)          *)
+(*   Mercury, Mars, Jupiter: from Babylonian tablets and FCI                  *)
+(*                                                                            *)
+(* ========================================================================== *)
 
+(* -------------------------------------------------------------------------- *)
+(* Metonic Cycle: 235 synodic months = 19 tropical years                      *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Babylonian astronomy; Meton of Athens 432 BC                    *)
+(* EVIDENCE:  Inscribed on mechanism; gear 38 contains factor 19              *)
+(* SEMANTICS: Fundamental lunisolar synchronization cycle                     *)
+(* -------------------------------------------------------------------------- *)
 Definition metonic_months : positive := 235.
 Definition metonic_years : positive := 19.
 Definition metonic_ratio : Q := 235 # 19.
 
+(* -------------------------------------------------------------------------- *)
+(* Callippic Cycle: 940 synodic months = 76 years = 4 × Metonic               *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Callippus of Cyzicus, 330 BC                                    *)
+(* EVIDENCE:  76-year dial on mechanism back; 940 = 4 × 235                   *)
+(* SEMANTICS: Refined Metonic for whole-day alignment                         *)
+(* -------------------------------------------------------------------------- *)
 Definition callippic_months : positive := 940.
 Definition callippic_years : positive := 76.
 Definition callippic_ratio : Q := 940 # 76.
 
+(* -------------------------------------------------------------------------- *)
+(* Saros Cycle: 223 synodic months ≈ 18 years 11 days 8 hours                 *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Babylonian astronomy, c. 700 BC; gear e3 has 223 teeth          *)
+(* EVIDENCE:  223-tooth gear confirmed by CT; drives Saros spiral dial        *)
+(* SEMANTICS: Eclipse prediction cycle (Sun-Moon-Node alignment repeats)      *)
+(* -------------------------------------------------------------------------- *)
 Definition saros_months : positive := 223.
 Definition saros_ratio : Q := 223 # 1.
 
+(* -------------------------------------------------------------------------- *)
+(* Exeligmos Cycle: 669 synodic months = 3 × Saros ≈ 54 years 33 days         *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Greek astronomy; eliminates Saros 8-hour remainder              *)
+(* EVIDENCE:  Exeligmos pointer on mechanism for tracking triple-Saros        *)
+(* SEMANTICS: Full eclipse return cycle at same terrestrial longitude         *)
+(* -------------------------------------------------------------------------- *)
 Definition exeligmos_months : positive := 669.
 Definition exeligmos_ratio : Q := 669 # 1.
 
+(* -------------------------------------------------------------------------- *)
+(* Venus Period: 289 synodic periods in 462 years                             *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Babylonian astronomy; FCI inscription shows 462 (ΥΞΒ)           *)
+(* EVIDENCE:  2016 CT scan revealed 462 in Venus section of Front Cover       *)
+(* SEMANTICS: 289 = 17²; synodic periods per year ratio for Venus gear train  *)
+(* -------------------------------------------------------------------------- *)
 Definition venus_synodic_periods : positive := 289.
 Definition venus_years : positive := 462.
 Definition venus_ratio : Q := 289 # 462.
 
+(* -------------------------------------------------------------------------- *)
+(* Saturn Period: 427 synodic periods in 442 years                            *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Babylonian astronomy; FCI inscription shows 442 (ΥΜΒ)           *)
+(* EVIDENCE:  2016 CT scan revealed 442 in Saturn section of Front Cover      *)
+(* SEMANTICS: 427/442 irreducible; requires factor 13 unavailable in corpus   *)
+(* -------------------------------------------------------------------------- *)
 Definition saturn_synodic_periods : positive := 427.
 Definition saturn_years : positive := 442.
 Definition saturn_ratio : Q := 427 # 442.
 
+(* -------------------------------------------------------------------------- *)
+(* Mercury Period: 1513 synodic periods in 480 years                          *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth 2021 reconstruction; derived from Babylonian relations   *)
+(* EVIDENCE:  Computational derivation; gear train reconstructed              *)
+(* SEMANTICS: Mercury's short synodic period (116 days) × frequency ratio     *)
+(* -------------------------------------------------------------------------- *)
 Definition mercury_synodic_periods : positive := 1513.
 Definition mercury_years : positive := 480.
 Definition mercury_ratio : Q := 1513 # 480.
 
+(* -------------------------------------------------------------------------- *)
+(* Mars Period: 133 synodic periods in 284 years                              *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Babylonian astronomy; Freeth 2021 reconstruction                *)
+(* EVIDENCE:  133 = 7 × 19; 284 = 4 × 71; gear train reconstructed            *)
+(* SEMANTICS: Mars synodic period ~780 days; ratio for gear train             *)
+(* -------------------------------------------------------------------------- *)
 Definition mars_synodic_periods : positive := 133.
 Definition mars_years : positive := 284.
 Definition mars_ratio : Q := 133 # 284.
 
+(* -------------------------------------------------------------------------- *)
+(* Jupiter Period: 315 synodic periods in 344 years                           *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Babylonian astronomy; Freeth 2021 reconstruction                *)
+(* EVIDENCE:  315 = 5 × 63; 344 = 8 × 43; gear train reconstructed            *)
+(* SEMANTICS: Jupiter synodic period ~399 days; ratio for gear train          *)
+(* -------------------------------------------------------------------------- *)
 Definition jupiter_synodic_periods : positive := 315.
 Definition jupiter_years : positive := 344.
 Definition jupiter_ratio : Q := 315 # 344.
@@ -783,6 +1405,14 @@ Proof. reflexivity. Qed.
 (* ========================================================================== *)
 (* V. Metonic Train                                                           *)
 (* ========================================================================== *)
+(*                                                                            *)
+(* The Metonic ratio 235/19 = (254-19)/19 derives from the lunar sidereal     *)
+(* frequency 254/19 via the differential: synodic = sidereal - solar, where   *)
+(* solar frequency = 1. This relationship is proved in differential_derives_  *)
+(* synodic. The Metonic dial pointer is driven via the differential output,   *)
+(* not a standalone gear train, so no metonic_train : Train is defined.       *)
+(*                                                                            *)
+(* ========================================================================== *)
 
 Definition metonic_spec (r : Q) : Prop := Qeq r (235 # 19).
 
@@ -821,7 +1451,26 @@ Proof. reflexivity. Qed.
 (* ========================================================================== *)
 (* VI. Venus Train                                                            *)
 (* ========================================================================== *)
+(*                                                                            *)
+(* Venus gear train realizes the period relation 289/462 (synodic/years).     *)
+(* The Front Cover Inscription (FCI) shows 462 (Greek ΥΞΒ) in Venus section,  *)
+(* discovered in 2016 CT scans. 289 = 17²; 462 = 2 × 3 × 7 × 11.              *)
+(*                                                                            *)
+(* Train: 51→44, 34→26, 26→63 (hypothetical gears from Freeth 2021)           *)
+(* Product: (44×26×63)/(51×34×26) = 72072/45084 = 462/289                     *)
+(* Inverse 289/462 gives synodic periods per year as required.                *)
+(*                                                                            *)
+(* Venus synodic period ≈ 584 days; 289 periods × 584 ≈ 462 × 365.25 days    *)
+(*                                                                            *)
+(* ========================================================================== *)
 
+(* -------------------------------------------------------------------------- *)
+(* venus_train                                                                *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth 2021 reconstruction; FCI inscription 462                 *)
+(* EVIDENCE:  Gear 63 CT-confirmed (Fragment D); others hypothetical          *)
+(* SEMANTICS: Full train with arbor transfers; realizes 462/289 ratio         *)
+(* -------------------------------------------------------------------------- *)
 Definition venus_train : Train := [
   SimpleMesh (mkMesh gear_51 gear_44 Clockwise);
   ArborTransfer gear_44 gear_34;
@@ -917,6 +1566,14 @@ Proof. exact Qeq_venus_train_462_289. Qed.
 (* ========================================================================== *)
 (* VII. Saturn Train                                                          *)
 (* ========================================================================== *)
+(*                                                                            *)
+(* NOTE: saturn_train_simple below produces ratio 18/7, NOT 427/442.          *)
+(* The ratio 427/442 = (7*61)/(2*13*17) requires factor 13, which is not      *)
+(* available in the known gear corpus. Saturn likely used an epicyclic or     *)
+(* differential mechanism. The train is retained to show what this gear       *)
+(* combination produces; saturn_direct_ratio encodes the inscription value.   *)
+(*                                                                            *)
+(* ========================================================================== *)
 
 Definition saturn_spec (r : Q) : Prop := Qeq r (427 # 442).
 
@@ -940,6 +1597,29 @@ Proof. reflexivity. Qed.
 
 Lemma Z_56_mul_54_mul_15 : (56 * 54 * 15 = 45360)%Z.
 Proof. reflexivity. Qed.
+
+Lemma Z_gcd_116640_45360 : (Z.gcd 116640 45360 = 6480)%Z.
+Proof. reflexivity. Qed.
+
+Lemma train_ratio_saturn_simple_eq :
+  train_ratio saturn_train_simple = Qmult (45 # 56) (Qmult (96 # 54) (27 # 15)).
+Proof. reflexivity. Qed.
+
+Lemma Qeq_saturn_simple_18_7 :
+  Qeq (train_ratio saturn_train_simple) (18 # 7).
+Proof. unfold Qeq. simpl. reflexivity. Qed.
+
+Lemma saturn_simple_not_spec :
+  ~ Qeq (train_ratio saturn_train_simple) (427 # 442).
+Proof.
+  unfold Qeq. simpl. lia.
+Qed.
+
+Lemma saturn_simple_inv_not_spec :
+  ~ Qeq (Qinv (train_ratio saturn_train_simple)) (427 # 442).
+Proof.
+  unfold Qeq, Qinv. simpl. lia.
+Qed.
 
 Definition saturn_epicyclic : EpicyclicTrain := mkEpicyclic
   (mkCarrier (1 # 1) 56) (mkPlanet 61 2) (mkSun 52 true) None.
@@ -1340,7 +2020,30 @@ Proof. repeat split; reflexivity. Qed.
 (* ========================================================================== *)
 (* IX. Saros and Exeligmos                                                    *)
 (* ========================================================================== *)
+(*                                                                            *)
+(* The Saros cycle (Babylonian, c. 700 BC) is the eclipse prediction period:  *)
+(* 223 synodic months ≈ 6585.32 days ≈ 18 years 11 days 8 hours.              *)
+(* After one Saros, Sun-Moon-Node geometry repeats, enabling eclipse forecast.*)
+(*                                                                            *)
+(* The 8-hour remainder means successive Saros eclipses shift ~120° longitude.*)
+(* The Exeligmos (3 × Saros = 669 months ≈ 54 years) eliminates this offset,  *)
+(* returning eclipses to approximately the same terrestrial location.         *)
+(*                                                                            *)
+(* Mechanism implementation:                                                  *)
+(* - 223-tooth gear (e3/b1) confirmed by CT scan                              *)
+(* - Four-turn spiral dial showing 223 months (3×56 + 55 per turn)            *)
+(* - Eclipse glyphs: Σ (Σελήνη/Selene = lunar), Η (Ἥλιος/Helios = solar)      *)
+(* - Exeligmos subsidiary pointer tracks 3-Saros super-cycle                  *)
+(*                                                                            *)
+(* ========================================================================== *)
 
+(* -------------------------------------------------------------------------- *)
+(* saros_dial_spec                                                            *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006; CT confirmation of 223-tooth gear           *)
+(* EVIDENCE:  Gear e3 with 223 teeth drives Saros dial                        *)
+(* SEMANTICS: Specification that Saros dial uses 223 month cycle              *)
+(* -------------------------------------------------------------------------- *)
 Definition saros_dial_spec (m : positive) : Prop := m = 223%positive.
 
 Theorem teeth_e3_eq_223 : teeth gear_e3 = 223%positive.
@@ -1625,12 +2328,10 @@ Proof. reflexivity. Qed.
 
 Definition lunar_node_period_months : Q := 2232584 # 10000.
 
-Definition draconitic_month_ratio : Q := 2421748 # 100000.
-
-Lemma draconitic_lt_sidereal :
-  Qlt draconitic_month_ratio (27321661 # 1000000).
+Lemma draconic_lt_sidereal :
+  Qlt draconic_month_days (27321661 # 1000000).
 Proof.
-  unfold draconitic_month_ratio, Qlt. simpl. lia.
+  unfold draconic_month_days, Qlt. simpl. lia.
 Qed.
 
 Definition eclipse_season_months : Q := 173 # 1.
@@ -1647,11 +2348,13 @@ Proof.
   unfold node_regression_per_saros, Qlt. simpl. split; lia.
 Qed.
 
-Definition draconic_per_saros : Q := 241 # 1.
+Definition draconic_per_saros : Q := 2419986 # 10000.
 
 Lemma draconic_nearly_integer_per_saros :
-  Qlt (Qminus (draconic_per_saros) (24200 # 100)) (1 # 100).
-Proof. unfold draconic_per_saros, Qlt, Qminus. simpl. lia. Qed.
+  Qlt (Qabs_custom (draconic_per_saros - (242 # 1))) (1 # 100).
+Proof.
+  unfold draconic_per_saros, Qabs_custom, Qle_bool, Qminus, Qlt. simpl. lia.
+Qed.
 
 Definition eclipse_possible_at_dial (dial_pos : Z) : bool :=
   let dial_mod := Z.modulo dial_pos 223 in
@@ -1690,6 +2393,24 @@ Qed.
 
 (* ========================================================================== *)
 (* X. Pin-and-Slot Lunar Anomaly                                              *)
+(* ========================================================================== *)
+(*                                                                            *)
+(* The lunar anomaly mechanism models the Moon's non-uniform orbital velocity *)
+(* using an ingenious pin-and-slot device. Two identical 50-tooth gears are   *)
+(* mounted with offset axes (~1.1mm apart). A pin on one gear engages a slot  *)
+(* on the other, producing variable angular velocity as the pin slides.       *)
+(*                                                                            *)
+(* This realizes Hipparchos' epicyclic lunar theory (c. 150 BC):              *)
+(* - Mean motion: 1:1 ratio between gears                                     *)
+(* - Anomaly amplitude: e/r ≈ 0.0367 (mechanism) vs 0.0549 (true eccentricity)*)
+(* - Output: φ_out = φ_in + (e/r) × sin(φ_in)                                 *)
+(* - Angular velocity: ω = 1 + (e/r) × cos(φ_in)                              *)
+(*   - Maximum at perigee (cos = +1)                                          *)
+(*   - Minimum at apogee (cos = -1)                                           *)
+(*                                                                            *)
+(* Freeth et al. 2006: mechanism models lunar anomaly to < 1 part in 200,     *)
+(* more accurate than Ptolemy's account of Hipparchos' theory 300 years later.*)
+(*                                                                            *)
 (* ========================================================================== *)
 
 Open Scope R_scope.
@@ -1995,17 +2716,60 @@ Definition moon_pointer_full_train : Train := [
 Definition moon_train_product : Q :=
   Qmult (38 # 64) (Qmult (24 # 48) (127 # 24)).
 
-Lemma moon_train_product_computed : 
+Lemma moon_train_product_computed :
   Qeq moon_train_product (38 * 24 * 127 # 64 * 48 * 24).
 Proof. unfold moon_train_product, Qeq, Qmult. simpl. reflexivity. Qed.
 
 Lemma moon_train_product_simplified : Qeq moon_train_product (4826 # 3072).
 Proof. unfold moon_train_product, Qeq, Qmult. simpl. reflexivity. Qed.
 
+Lemma train_ratio_moon_pointer_full :
+  train_ratio moon_pointer_full_train = moon_train_product.
+Proof. reflexivity. Qed.
+
+Lemma Z_gcd_4826_3072 : (Z.gcd 4826 3072 = 2)%Z.
+Proof. reflexivity. Qed.
+
+Lemma moon_train_product_reduced : Qeq moon_train_product (2413 # 1536).
+Proof. unfold moon_train_product, Qeq, Qmult. simpl. reflexivity. Qed.
+
+Lemma Z_2413_factored : (2413 = 19 * 127)%Z.
+Proof. reflexivity. Qed.
+
+Lemma Z_1536_factored : (1536 = 512 * 3)%Z.
+Proof. reflexivity. Qed.
+
+(* NOTE: moon_pointer_full_train produces 2413/1536 ≈ 1.57, not 254/19 ≈ 13.37.   *)
+(* The train as defined is incomplete. The full lunar pointer mechanism involves  *)
+(* additional gearing from the main drive. See moon_pointer_gear_train above for  *)
+(* the simplified ratio 127/19 from the (127/38)*2 calculation.                   *)
+
+Lemma moon_train_not_sidereal_ratio :
+  ~ Qeq (train_ratio moon_pointer_full_train) lunar_sidereal_ratio.
+Proof.
+  unfold lunar_sidereal_ratio, moon_pointer_full_train, train_ratio.
+  unfold Qeq, Qmult, train_element_ratio, gear_ratio. simpl. lia.
+Qed.
+
 Close Scope Q_scope.
 
 (* ========================================================================== *)
 (* XI. Calendar Ring                                                          *)
+(* ========================================================================== *)
+(*                                                                            *)
+(* The front dial's outer ring shows a calendar with month/day divisions.     *)
+(* Budiselic et al. 2024 used Bayesian analysis of hole spacing to determine: *)
+(* - 354 holes (lunar calendar) vs 365 holes (solar calendar)                 *)
+(* - Posterior mean: 354.08 ± 1.4 (2σ)                                        *)
+(* - 365 holes lies outside 2σ bounds → lunar calendar with high confidence   *)
+(*                                                                            *)
+(* 354 days = 12 lunar months (6×30 + 6×29 days), standard Greek lunisolar.   *)
+(* The calendar likely used Corinthian month names based on inscription       *)
+(* analysis, suggesting origin in a Corinthian colony (possibly Syracuse).    *)
+(*                                                                            *)
+(* Intercalation: 7 extra months per 19-year Metonic cycle maintains sync     *)
+(* with solar year (12×19 + 7 = 235 months).                                  *)
+(*                                                                            *)
 (* ========================================================================== *)
 
 Open Scope Z_scope.
@@ -2152,6 +2916,19 @@ Proof. reflexivity. Qed.
 (* ========================================================================== *)
 (* XII. Zodiac Dial                                                           *)
 (* ========================================================================== *)
+(*                                                                            *)
+(* The inner ring of the front dial shows the zodiac (ecliptic) with 360°     *)
+(* graduation. The Sun pointer tracks solar position against zodiac signs,    *)
+(* each spanning 30°. This enables reading the Sun's ecliptic longitude.      *)
+(*                                                                            *)
+(* The zodiac scale appears to have been graduated for the Egyptian calendar  *)
+(* (360 + 5 epagomenal days), though the exact epoch offset is debated.       *)
+(* The mechanism shows awareness of precession (discovered by Hipparchos):    *)
+(* Earth's axis precesses ~1° per 72 years, shifting equinox points.          *)
+(*                                                                            *)
+(* Sun pointer train ratio ~3/4 with compensating gear gives 1:1 per year.    *)
+(*                                                                            *)
+(* ========================================================================== *)
 
 Inductive ZodiacSign : Set :=
   | Aries | Taurus | Gemini | Cancer | Leo | Virgo
@@ -2203,6 +2980,21 @@ Proof. unfold sun_pointer_ratio, sun_annual_ratio, sun_pointer_train. unfold Qeq
 
 (* ========================================================================== *)
 (* XIII. Games Dial                                                           *)
+(* ========================================================================== *)
+(*                                                                            *)
+(* A small subsidiary dial on the back shows the 4-year Panhellenic Games     *)
+(* cycle (Olympiad). The Greeks used Olympiads for dating (776 BC = Ol. 1).   *)
+(*                                                                            *)
+(* PANHELLENIC (CROWN) GAMES - victors received olive/laurel wreaths:         *)
+(* - Olympia: Zeus, at Olympia (Elis), every 4 years                          *)
+(* - Pythia: Apollo, at Delphi, every 4 years (offset 2 years from Olympia)   *)
+(* - Nemea: Zeus, at Nemea, every 2 years                                     *)
+(* - Isthmia: Poseidon, at Corinth, every 2 years                             *)
+(*                                                                            *)
+(* The mechanism also references Naa (Zeus at Dodona), indicating connection  *)
+(* to northwestern Greece (Epirus/Corinthian sphere). The dial has 4 sectors  *)
+(* and advances 1/4 turn per year.                                            *)
+(*                                                                            *)
 (* ========================================================================== *)
 
 Inductive PanhellenicGame : Set := Olympia | Nemea | Isthmia | Pythia | Naa.
@@ -2256,9 +3048,33 @@ Proof. reflexivity. Qed.
 (* ========================================================================== *)
 (* XIV. Astronomical Constants                                                *)
 (* ========================================================================== *)
+(*                                                                            *)
+(* Modern high-precision values for astronomical periods, used to evaluate    *)
+(* the accuracy of the mechanism's gear ratios. Values in days:               *)
+(*                                                                            *)
+(* - Synodic month: 29.53059 days (Moon phases cycle)                         *)
+(* - Tropical year: 365.24219 days (equinox-to-equinox)                       *)
+(* - Sidereal year: 365.25636 days (star-to-star)                             *)
+(* - Venus synodic: 583.92 days                                               *)
+(* - Saturn synodic: 378.09 days                                              *)
+(* - Jupiter synodic: 398.88 days                                             *)
+(* - Mars synodic: 779.94 days                                                *)
+(* - Mercury synodic: 115.88 days                                             *)
+(*                                                                            *)
+(* The mechanism's Babylonian period relations approximate these values with  *)
+(* remarkable accuracy for the technology available in the 2nd century BC.    *)
+(*                                                                            *)
+(* ========================================================================== *)
 
 Open Scope Q_scope.
 
+(* -------------------------------------------------------------------------- *)
+(* synodic_month_days                                                         *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Modern astronomy (NASA)                                         *)
+(* EVIDENCE:  High-precision measurement of lunar synodic period              *)
+(* SEMANTICS: 29.53059 days from new moon to new moon                         *)
+(* -------------------------------------------------------------------------- *)
 Definition synodic_month_days : Q := 2953059 # 100000.
 Definition tropical_year_days : Q := 36524219 # 100000.
 Definition sidereal_year_days : Q := 36525636 # 100000.
@@ -2274,14 +3090,6 @@ Definition metonic_months_days : Q := Qmult (235 # 1) synodic_month_days.
 
 Definition metonic_error : Q := metonic_months_days - metonic_years_days.
 
-Definition Qabs_custom (q : Q) : Q := if Qle_bool 0 q then q else Qopp q.
-
-Lemma Qabs_custom_nonneg : forall q, Qle_bool 0 q = true -> Qabs_custom q = q.
-Proof. intros q H. unfold Qabs_custom. rewrite H. reflexivity. Qed.
-
-Lemma Qabs_custom_neg : forall q, Qle_bool 0 q = false -> Qabs_custom q = Qopp q.
-Proof. intros q H. unfold Qabs_custom. rewrite H. reflexivity. Qed.
-
 Lemma Qlt_metonic_error_1 : Qlt (Qabs_custom metonic_error) (1 # 1).
 Proof.
   unfold metonic_error, metonic_months_days, metonic_years_days.
@@ -2296,9 +3104,29 @@ Close Scope Q_scope.
 (* ========================================================================== *)
 (* XV. Error Bounds                                                           *)
 (* ========================================================================== *)
+(*                                                                            *)
+(* Comparison of mechanism gear ratios against modern astronomical values.    *)
+(* The Babylonian period relations encoded in the gears are remarkably close  *)
+(* to true synodic periods, demonstrating sophisticated ancient astronomy.    *)
+(*                                                                            *)
+(* Error analysis shows:                                                      *)
+(* - Venus: error < 0.5 days over synodic period (~584 days)                  *)
+(* - Saturn: error < 1 day over synodic period (~378 days)                    *)
+(* - Metonic: error < 3 hours over 19 years (< 0.01%)                         *)
+(*                                                                            *)
+(* These errors are within observational limits of naked-eye astronomy.       *)
+(*                                                                            *)
+(* ========================================================================== *)
 
 Open Scope Q_scope.
 
+(* -------------------------------------------------------------------------- *)
+(* relative_error                                                             *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Standard error analysis                                         *)
+(* EVIDENCE:  |(mechanism - actual) / actual| measures fractional error       *)
+(* SEMANTICS: Returns relative error as absolute fraction                     *)
+(* -------------------------------------------------------------------------- *)
 Definition relative_error (actual mechanism : Q) : Q := Qabs_custom ((mechanism - actual) / actual).
 
 Definition venus_actual : Q := venus_synodic_days / tropical_year_days.
@@ -2425,13 +3253,28 @@ Close Scope Q_scope.
 (* XVI. State Machine                                                         *)
 (* ========================================================================== *)
 (*                                                                            *)
-(*  NOTE: This is a LOGICAL state-space model of dial cell indices, not a     *)
-(*  kinematically faithful simulation. Each dial increments by 1 per step,    *)
-(*  representing advancement by one cell. In the physical mechanism, one      *)
-(*  crank rotation advances dials by their respective gear ratios (e.g.,      *)
-(*  Metonic advances 235/19 cells per year, not 1). This abstraction is       *)
-(*  intentional: it models the discrete state space for periodicity proofs    *)
-(*  while the gear train sections handle continuous ratio relationships.      *)
+(* The mechanism operates as a deterministic state machine: turning the       *)
+(* input crank advances all dials according to their gear ratios. This        *)
+(* section models the discrete state space for periodicity analysis.          *)
+(*                                                                            *)
+(* DIAL MODULI (cycle lengths):                                               *)
+(* - Metonic: 235 months (19 years × 5 turns)                                 *)
+(* - Saros: 223 months (4 turns × ~56 months)                                 *)
+(* - Callippic: 76 years (4 × Metonic)                                        *)
+(* - Exeligmos: 3 (cycle through 0h, 8h, 16h offsets)                         *)
+(* - Games: 4 (Olympiad cycle)                                                *)
+(* - Zodiac: 360 (degrees)                                                    *)
+(*                                                                            *)
+(* PERIODICITY THEOREM: LCM of all cycles = 71,690,040 steps                  *)
+(* After this many steps, all dials return to their initial positions.        *)
+(*                                                                            *)
+(* NOTE: This is a LOGICAL state-space model of dial cell indices, not a      *)
+(* kinematically faithful simulation. Each dial increments by 1 per step,     *)
+(* representing advancement by one cell. In the physical mechanism, one       *)
+(* crank rotation advances dials by their respective gear ratios (e.g.,       *)
+(* Metonic advances 235/19 cells per year, not 1). This abstraction is        *)
+(* intentional: it models the discrete state space for periodicity proofs     *)
+(* while the gear train sections handle continuous ratio relationships.       *)
 (*                                                                            *)
 (* ========================================================================== *)
 
@@ -2888,7 +3731,30 @@ Qed.
 (* ========================================================================== *)
 (* XVII. Summary Theorems                                                     *)
 (* ========================================================================== *)
+(*                                                                            *)
+(* Consolidated correctness statements for all major components of the        *)
+(* mechanism. The master theorem `mechanism_completeness` bundles all         *)
+(* verified claims: Metonic, Venus, Saturn, Mars, Jupiter trains; calendar;   *)
+(* games dial; zodiac. Each component theorem can be cited independently.     *)
+(*                                                                            *)
+(* VERIFIED CLAIMS:                                                           *)
+(* - metonic_correct: 235/19 ratio with gears 38a and 127                     *)
+(* - venus_correct: 289/462 via train (51→44, 34→26, 26→63)                   *)
+(* - saturn_correct: 427/442 ratio (from FCI inscription)                     *)
+(* - saros_correct: 223-tooth gear matches Saros months                       *)
+(* - calendar_lunar: 354 holes with Bayesian evidence                         *)
+(* - lunar_anomaly_mean: 1:1 mean ratio from 50-tooth gears                   *)
+(* - period_relations: all astronomical ratios correctly encoded              *)
+(*                                                                            *)
+(* ========================================================================== *)
 
+(* -------------------------------------------------------------------------- *)
+(* metonic_correct                                                            *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Freeth et al. 2006; gear train analysis                         *)
+(* EVIDENCE:  Gears 38a (38 teeth) and 127 (127 teeth) confirmed by CT        *)
+(* SEMANTICS: Metonic ratio 235/19 correctly encoded in mechanism             *)
+(* -------------------------------------------------------------------------- *)
 Theorem metonic_correct :
   metonic_spec metonic_train_ratio /\ teeth gear_38a = 38%positive /\ teeth gear_127 = 127%positive.
 Proof. repeat split; reflexivity. Qed.
@@ -2982,7 +3848,34 @@ Qed.
 (* ========================================================================== *)
 (* XVIII. Provenance                                                          *)
 (* ========================================================================== *)
+(*                                                                            *)
+(* Tracks the evidential basis for each claim in the formalization.           *)
+(* Different parts of our knowledge have different levels of certainty:       *)
+(*                                                                            *)
+(* SOURCE QUALITY LEVELS:                                                     *)
+(* - CTConfirmed (100%): Gear teeth directly visible in CT scans              *)
+(* - InscriptionDerived (95%): Numbers read from inscriptions (e.g., FCI)     *)
+(* - ReconstructionHypothesis (70%): Freeth 2021 or similar reconstructions   *)
+(* - ComputationalInference (90%): Statistical/Bayesian analysis of evidence  *)
+(*                                                                            *)
+(* This enables meta-reasoning about which theorems depend on which           *)
+(* assumptions, important for understanding the formalization's scope.        *)
+(*                                                                            *)
+(* Example provenances:                                                       *)
+(* - Metonic ratio: CT-confirmed (gears 38, 127 visible)                      *)
+(* - Venus 462: Inscription-derived (ΥΞΒ visible in CT)                       *)
+(* - Mercury gear train: Hypothesis (Freeth 2021)                             *)
+(* - Calendar 354 holes: Bayesian inference (Budiselic et al.)                *)
+(*                                                                            *)
+(* ========================================================================== *)
 
+(* -------------------------------------------------------------------------- *)
+(* SourceQuality                                                              *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Epistemological classification of evidence types                *)
+(* EVIDENCE:  Different parts of mechanism have different certainty levels    *)
+(* SEMANTICS: Hierarchy from direct observation to computational inference    *)
+(* -------------------------------------------------------------------------- *)
 Inductive SourceQuality : Set :=
   | CTConfirmed | InscriptionDerived | ReconstructionHypothesis | ComputationalInference.
 
@@ -3061,7 +3954,32 @@ Qed.
 (* ========================================================================== *)
 (* XIX. Type Safety and Automation                                            *)
 (* ========================================================================== *)
+(*                                                                            *)
+(* Additional type wrappers and tactics for cleaner formalization.            *)
+(*                                                                            *)
+(* DIMENSIONAL TYPES:                                                         *)
+(* - Frequency: cycles per unit time (e.g., 254/19 sidereal months/year)      *)
+(* - Period: time per cycle (inverse of frequency)                            *)
+(*                                                                            *)
+(* These wrappers help distinguish semantically different quantities that     *)
+(* happen to both be rationals. The mechanism uses both:                      *)
+(* - Frequencies: how many cycles per year (gear train outputs)               *)
+(* - Periods: how many days per cycle (astronomical constants)                *)
+(*                                                                            *)
+(* AUTOMATION TACTICS:                                                        *)
+(* - solve_gear_ratio: resolves gear ratio equalities                         *)
+(* - solve_Qeq: handles rational equality goals                               *)
+(* - prove_ratio_bounds: establishes inequality bounds                        *)
+(*                                                                            *)
+(* ========================================================================== *)
 
+(* -------------------------------------------------------------------------- *)
+(* Frequency                                                                  *)
+(* -------------------------------------------------------------------------- *)
+(* SOURCE:    Dimensional analysis for astronomical rates                     *)
+(* EVIDENCE:  Gear trains produce frequency ratios (cycles per time)          *)
+(* SEMANTICS: Wrapper distinguishing frequencies from periods                 *)
+(* -------------------------------------------------------------------------- *)
 Record Frequency := mkFrequency { freq_value : Q }.
 Record Period := mkPeriod { period_value : Q }.
 
@@ -3120,4 +4038,3 @@ Qed.
 (* ========================================================================== *)
 (* END                                                                        *)
 (* ========================================================================== *)
- 
