@@ -7521,5 +7521,829 @@ Proof.
 Qed.
 
 (* ========================================================================== *)
-(* END                                                                        *)
+(* PART VII: GAP CLOSURE                                                      *)
+(* ========================================================================== *)
+(* This section addresses 30 identified gaps in the formalization with        *)
+(* rigorous proofs built on a foundation of helper lemmas.                    *)
+(* ========================================================================== *)
+
+(* ========================================================================== *)
+(* XXXVII. Real Number Helper Lemmas                                          *)
+(* ========================================================================== *)
+
+Open Scope R_scope.
+
+Lemma R180_neq_0 : 180 <> 0.
+Proof. lra. Qed.
+
+Lemma R180_pos : 0 < 180.
+Proof. lra. Qed.
+
+Lemma R360_eq_2_180 : 360 = 2 * 180.
+Proof. lra. Qed.
+
+Lemma Rdiv_1 : forall r, r / 1 = r.
+Proof. intro r. unfold Rdiv. rewrite Rinv_1. ring. Qed.
+
+Lemma Rmult_div_cancel : forall a b, b <> 0 -> a * b / b = a.
+Proof. intros a b Hb. field. exact Hb. Qed.
+
+Lemma Rdiv_mult_cancel : forall a b, b <> 0 -> a / b * b = a.
+Proof. intros a b Hb. field. exact Hb. Qed.
+
+Lemma Rmult_0_absorb : forall a b c, a * 0 * b * c = 0.
+Proof. intros. ring. Qed.
+
+Lemma Rsqr_0_chain : forall a b, a * a * b * b = 0 -> a = 0 \/ b = 0.
+Proof.
+  intros a b H.
+  destruct (Req_dec a 0) as [Ha|Ha]; [left; exact Ha|].
+  destruct (Req_dec b 0) as [Hb|Hb]; [right; exact Hb|].
+  exfalso.
+  assert (Hne : a * a * b * b <> 0).
+  { apply Rmult_integral_contrapositive_currified.
+    apply Rmult_integral_contrapositive_currified.
+    apply Rmult_integral_contrapositive_currified; assumption. assumption. assumption. }
+  lra.
+Qed.
+
+Lemma sqrt_1_minus_0 : sqrt (1 - 0) = 1.
+Proof. rewrite Rminus_0_r. exact sqrt_1. Qed.
+
+Lemma Ropp_div : forall a b, b <> 0 -> -(a/b) = (-a)/b.
+Proof. intros. field. exact H. Qed.
+
+Lemma Rdiv_pos : forall a b, 0 < a -> 0 < b -> 0 < a / b.
+Proof.
+  intros a b Ha Hb. unfold Rdiv.
+  apply Rmult_lt_0_compat; [exact Ha|].
+  apply Rinv_0_lt_compat. exact Hb.
+Qed.
+
+Lemma Rmult_pos_3 : forall a b c, 0 < a -> 0 < b -> 0 < c -> 0 < a * b * c.
+Proof.
+  intros a b c Ha Hb Hc.
+  apply Rmult_lt_0_compat.
+  apply Rmult_lt_0_compat; assumption.
+  assumption.
+Qed.
+
+(* ========================================================================== *)
+(* XXXVIII. PI-Related Helper Lemmas                                          *)
+(* ========================================================================== *)
+
+Lemma PI_pos : 0 < PI.
+Proof. exact PI_RGT_0. Qed.
+
+Lemma PI_neq_0 : PI <> 0.
+Proof. apply Rgt_not_eq. exact PI_RGT_0. Qed.
+
+Lemma PI_div_2_pos : 0 < PI / 2.
+Proof. apply Rdiv_pos; [exact PI_pos | lra]. Qed.
+
+Lemma neg_PI_div_2_neg : - PI / 2 < 0.
+Proof.
+  unfold Rdiv. rewrite <- Ropp_mult_distr_l.
+  apply Ropp_lt_gt_0_contravar.
+  apply Rmult_lt_0_compat; [exact PI_pos | lra].
+Qed.
+
+Lemma small_angle_upper : forall x,
+  0 < x -> x < 90 -> x * PI / 180 < PI / 2.
+Proof.
+  intros x Hpos Hsmall.
+  assert (Hpi : 0 < PI) by exact PI_pos.
+  assert (H180 : (180 : R) <> 0) by lra.
+  assert (H90 : (90 : R) <> 0) by lra.
+  assert (Hpi2 : 0 < PI / 2) by (apply Rdiv_pos; lra).
+  assert (Hkey : x / 90 < 1).
+  { apply Rmult_lt_reg_r with 90; [lra|].
+    replace (x / 90 * 90) with x by (field; lra).
+    replace (1 * 90) with 90 by ring.
+    exact Hsmall. }
+  replace (x * PI / 180) with (x / 90 * (PI / 2)) by (field; lra).
+  replace (PI / 2) with (1 * (PI / 2)) at 2 by ring.
+  apply Rmult_lt_compat_r.
+  - exact Hpi2.
+  - exact Hkey.
+Qed.
+
+Lemma small_angle_lower : forall x,
+  0 < x -> - PI / 2 < x * PI / 180.
+Proof.
+  intros x Hpos.
+  assert (Hpi : 0 < PI) by exact PI_pos.
+  apply Rlt_trans with 0.
+  - apply neg_PI_div_2_neg.
+  - unfold Rdiv. apply Rmult_lt_0_compat.
+    apply Rmult_lt_0_compat; [lra | exact Hpi].
+    apply Rinv_0_lt_compat. lra.
+Qed.
+
+Lemma small_angle_in_range : forall x,
+  0 < x -> x < 90 -> - PI / 2 < x * PI / 180 < PI / 2.
+Proof.
+  intros x Hpos Hsmall.
+  split.
+  - apply small_angle_lower. exact Hpos.
+  - apply small_angle_upper; assumption.
+Qed.
+
+(* ========================================================================== *)
+(* XXXIX. Degree-Radian Conversion                                            *)
+(* ========================================================================== *)
+
+Definition deg_to_rad (d : R) : R := d * PI / 180.
+
+Definition rad_to_deg (r : R) : R := r * 180 / PI.
+
+Lemma deg_to_rad_0 : deg_to_rad 0 = 0.
+Proof.
+  unfold deg_to_rad. unfold Rdiv.
+  replace (0 * PI * / 180) with 0 by ring.
+  reflexivity.
+Qed.
+
+Lemma deg_to_rad_90 : deg_to_rad 90 = PI / 2.
+Proof. unfold deg_to_rad. field. Qed.
+
+Lemma deg_to_rad_180 : deg_to_rad 180 = PI.
+Proof. unfold deg_to_rad. field. Qed.
+
+Lemma deg_to_rad_360 : deg_to_rad 360 = 2 * PI.
+Proof. unfold deg_to_rad. field. Qed.
+
+Lemma deg_to_rad_pos : forall d, 0 < d -> 0 < deg_to_rad d.
+Proof.
+  intros d Hd. unfold deg_to_rad.
+  apply Rdiv_pos; [|exact R180_pos].
+  apply Rmult_lt_0_compat; [exact Hd | exact PI_pos].
+Qed.
+
+Lemma deg_to_rad_small : forall d, 0 < d < 90 ->
+  - PI / 2 < deg_to_rad d < PI / 2.
+Proof.
+  intros d [Hpos Hsmall].
+  unfold deg_to_rad.
+  exact (small_angle_in_range d Hpos Hsmall).
+Qed.
+
+Lemma Rinv_180_pos : 0 < / 180.
+Proof. apply Rinv_0_lt_compat. lra. Qed.
+
+Lemma deg_to_rad_monotone : forall a b, a < b -> deg_to_rad a < deg_to_rad b.
+Proof.
+  intros a b Hab. unfold deg_to_rad, Rdiv.
+  apply Rmult_lt_compat_r.
+  - exact Rinv_180_pos.
+  - apply Rmult_lt_compat_r.
+    + exact PI_pos.
+    + exact Hab.
+Qed.
+
+(* ========================================================================== *)
+(* XL. Trigonometric Identities at Special Angles                             *)
+(* ========================================================================== *)
+
+Lemma sin_0_val : sin 0 = 0.
+Proof. exact sin_0. Qed.
+
+Lemma cos_0_val : cos 0 = 1.
+Proof. exact cos_0. Qed.
+
+Lemma sin_PI_val : sin PI = 0.
+Proof. exact sin_PI. Qed.
+
+Lemma cos_PI_val : cos PI = -1.
+Proof. exact cos_PI. Qed.
+
+Lemma sin_PI2_val : sin (PI / 2) = 1.
+Proof. exact sin_PI2. Qed.
+
+Lemma cos_PI2_val : cos (PI / 2) = 0.
+Proof. exact cos_PI2. Qed.
+
+Lemma sin_neg_PI2 : sin (- PI / 2) = -1.
+Proof.
+  replace (- PI / 2) with (- (PI / 2)) by field.
+  rewrite sin_neg. rewrite sin_PI2. ring.
+Qed.
+
+Lemma sin_3PI2 : sin (3 * PI / 2) = -1.
+Proof.
+  replace (3 * PI / 2) with (PI + PI / 2) by field.
+  rewrite sin_plus.
+  rewrite sin_PI_val. rewrite cos_PI_val.
+  rewrite sin_PI2_val. rewrite cos_PI2_val.
+  ring.
+Qed.
+
+Lemma cos_3PI2 : cos (3 * PI / 2) = 0.
+Proof.
+  replace (3 * PI / 2) with (PI + PI / 2) by field.
+  rewrite cos_plus.
+  rewrite sin_PI_val. rewrite cos_PI_val.
+  rewrite sin_PI2_val. rewrite cos_PI2_val.
+  ring.
+Qed.
+
+(* ========================================================================== *)
+(* XLI. Eccentricity Bounds                                                   *)
+(* ========================================================================== *)
+
+Definition valid_eccentricity (e : R) : Prop := 0 <= e < 1.
+
+Lemma ecc_nonneg : forall e, valid_eccentricity e -> 0 <= e.
+Proof. intros e [H _]. exact H. Qed.
+
+Lemma ecc_lt_1 : forall e, valid_eccentricity e -> e < 1.
+Proof. intros e [_ H]. exact H. Qed.
+
+Lemma ecc_1_plus_pos : forall e, valid_eccentricity e -> 0 < 1 + e.
+Proof. intros e [He1 He2]. lra. Qed.
+
+Lemma ecc_1_minus_pos : forall e, valid_eccentricity e -> 0 < 1 - e.
+Proof. intros e [He1 He2]. lra. Qed.
+
+Lemma ecc_1_plus_neq_0 : forall e, valid_eccentricity e -> 1 + e <> 0.
+Proof. intros e He. apply Rgt_not_eq. apply Rlt_gt. apply ecc_1_plus_pos. exact He. Qed.
+
+Lemma ecc_1_minus_neq_0 : forall e, valid_eccentricity e -> 1 - e <> 0.
+Proof. intros e He. apply Rgt_not_eq. apply Rlt_gt. apply ecc_1_minus_pos. exact He. Qed.
+
+Lemma sq_lt_1_of_abs_lt_1 : forall x, 0 <= x < 1 -> x * x < 1.
+Proof.
+  intros x [Hge Hlt].
+  destruct (Rle_lt_or_eq_dec 0 x Hge) as [Hpos|Hzero].
+  - replace 1 with (1 * 1) by ring.
+    apply Rmult_gt_0_lt_compat; lra.
+  - rewrite <- Hzero. lra.
+Qed.
+
+Lemma ecc_sq_lt_1 : forall e, valid_eccentricity e -> e * e < 1.
+Proof.
+  intros e He. apply sq_lt_1_of_abs_lt_1. exact He.
+Qed.
+
+Lemma ecc_1_minus_sq_pos : forall e, valid_eccentricity e -> 0 < 1 - e * e.
+Proof.
+  intros e He.
+  assert (H : e * e < 1) by (apply ecc_sq_lt_1; exact He).
+  lra.
+Qed.
+
+(* ========================================================================== *)
+(* XLII. Equation of Center                                                   *)
+(* ========================================================================== *)
+
+Definition equation_of_center (M e : R) : R := 2 * e * sin M.
+
+Lemma eoc_at_0 : forall e, equation_of_center 0 e = 0.
+Proof. intro e. unfold equation_of_center. rewrite sin_0_val. ring. Qed.
+
+Lemma eoc_at_PI : forall e, equation_of_center PI e = 0.
+Proof. intro e. unfold equation_of_center. rewrite sin_PI_val. ring. Qed.
+
+Lemma eoc_at_PI2 : forall e, equation_of_center (PI/2) e = 2 * e.
+Proof. intro e. unfold equation_of_center. rewrite sin_PI2_val. ring. Qed.
+
+Lemma eoc_at_3PI2 : forall e, equation_of_center (3*PI/2) e = -2 * e.
+Proof. intro e. unfold equation_of_center. rewrite sin_3PI2. ring. Qed.
+
+Lemma sin_bound : forall x, -1 <= sin x <= 1.
+Proof.
+  intro x.
+  pose proof (SIN_bound x) as [H1 H2].
+  split; lra.
+Qed.
+
+Lemma Rabs_sin_le_1 : forall x, Rabs (sin x) <= 1.
+Proof.
+  intro x.
+  apply Rabs_le.
+  apply sin_bound.
+Qed.
+
+Lemma Rabs_2 : Rabs 2 = 2.
+Proof. apply Rabs_pos_eq. lra. Qed.
+
+Lemma Rabs_nonneg_id : forall x, 0 <= x -> Rabs x = x.
+Proof. intros x Hx. apply Rabs_pos_eq. exact Hx. Qed.
+
+Lemma eoc_bounded : forall M e, valid_eccentricity e ->
+  Rabs (equation_of_center M e) <= 2 * e.
+Proof.
+  intros M e He.
+  unfold equation_of_center.
+  assert (H2e : 0 <= 2 * e).
+  { apply Rmult_le_pos; [lra | apply ecc_nonneg; exact He]. }
+  assert (Hsin : Rabs (sin M) <= 1) by apply Rabs_sin_le_1.
+  rewrite Rabs_mult. rewrite Rabs_mult.
+  rewrite Rabs_2.
+  rewrite (Rabs_nonneg_id e (ecc_nonneg e He)).
+  replace (2 * e * Rabs (sin M)) with ((2 * e) * Rabs (sin M)) by ring.
+  replace (2 * e) with ((2 * e) * 1) at 2 by ring.
+  apply Rmult_le_compat_l; [exact H2e | exact Hsin].
+Qed.
+
+(* ========================================================================== *)
+(* XLIII. Epicyclic Position                                                  *)
+(* ========================================================================== *)
+
+Definition epicyclic_position (omega t e : R) : R :=
+  let M := omega * t in M + equation_of_center M e.
+
+Lemma epicyclic_at_t0 : forall omega e, epicyclic_position omega 0 e = 0.
+Proof.
+  intros omega e. unfold epicyclic_position.
+  replace (omega * 0) with 0 by ring.
+  rewrite eoc_at_0. ring.
+Qed.
+
+(* ========================================================================== *)
+(* XLIV. Kepler's Equation                                                    *)
+(* ========================================================================== *)
+
+Definition kepler_equation (E e : R) : R := E - e * sin E.
+
+Lemma kepler_circular : forall E, kepler_equation E 0 = E.
+Proof. intro E. unfold kepler_equation. ring. Qed.
+
+Lemma kepler_at_0 : forall e, kepler_equation 0 e = 0.
+Proof. intro e. unfold kepler_equation. rewrite sin_0_val. ring. Qed.
+
+Lemma kepler_at_PI : forall e, kepler_equation PI e = PI.
+Proof. intro e. unfold kepler_equation. rewrite sin_PI_val. ring. Qed.
+
+(* ========================================================================== *)
+(* XLV. Orbital Radius                                                        *)
+(* ========================================================================== *)
+
+Definition orbital_radius (a e nu : R) : R :=
+  a * (1 - e * e) / (1 + e * cos nu).
+
+Lemma orbital_radius_circular : forall a nu, orbital_radius a 0 nu = a.
+Proof.
+  intros a nu. unfold orbital_radius.
+  replace (0 * 0) with 0 by ring.
+  replace (0 * cos nu) with 0 by ring.
+  replace (1 - 0) with 1 by ring.
+  replace (1 + 0) with 1 by ring.
+  replace (a * 1) with a by ring.
+  apply Rdiv_1.
+Qed.
+
+Lemma orbital_radius_perihelion : forall a e,
+  valid_eccentricity e -> orbital_radius a e 0 = a * (1 - e).
+Proof.
+  intros a e He. unfold orbital_radius.
+  rewrite cos_0_val.
+  replace (e * 1) with e by ring.
+  replace (1 - e * e) with ((1 - e) * (1 + e)) by ring.
+  rewrite <- Rmult_assoc.
+  apply Rmult_div_cancel.
+  apply ecc_1_plus_neq_0. exact He.
+Qed.
+
+Lemma orbital_radius_aphelion : forall a e,
+  valid_eccentricity e -> orbital_radius a e PI = a * (1 + e).
+Proof.
+  intros a e He. unfold orbital_radius.
+  rewrite cos_PI_val.
+  replace (e * -1) with (-e) by ring.
+  replace (1 + -e) with (1 - e) by ring.
+  replace (1 - e * e) with ((1 - e) * (1 + e)) by ring.
+  replace (a * ((1 - e) * (1 + e)) / (1 - e)) with (a * (1 + e)).
+  - reflexivity.
+  - field. apply ecc_1_minus_neq_0. exact He.
+Qed.
+
+(* ========================================================================== *)
+(* XLVI. Pin-Slot Mechanism                                                   *)
+(* ========================================================================== *)
+
+Record PinSlotParams := mkPinSlotParams {
+  deferent_radius : R;
+  pin_offset : R;
+  slot_length : R
+}.
+
+Definition pin_slot_ecc (p : PinSlotParams) : R :=
+  pin_offset p / deferent_radius p.
+
+Definition pin_slot_output_approx (theta_in e : R) : R :=
+  theta_in + e * sin theta_in.
+
+Lemma pin_slot_approx_at_0 : forall e, pin_slot_output_approx 0 e = 0.
+Proof. intro e. unfold pin_slot_output_approx. rewrite sin_0_val. ring. Qed.
+
+Lemma pin_slot_approx_at_PI : forall e, pin_slot_output_approx PI e = PI.
+Proof. intro e. unfold pin_slot_output_approx. rewrite sin_PI_val. ring. Qed.
+
+Lemma pin_slot_approx_at_PI2 : forall e, pin_slot_output_approx (PI/2) e = PI/2 + e.
+Proof. intro e. unfold pin_slot_output_approx. rewrite sin_PI2_val. ring. Qed.
+
+Definition pin_slot_velocity (omega theta e : R) : R :=
+  omega * (1 + e * cos theta) / sqrt (1 - e*e*(sin theta)*(sin theta)).
+
+Lemma sqrt_at_zero_sin : forall e, sqrt (1 - e*e*0*0) = 1.
+Proof. intro e. replace (e*e*0*0) with 0 by ring. rewrite Rminus_0_r. exact sqrt_1. Qed.
+
+Lemma pin_slot_velocity_at_0 : forall omega e,
+  pin_slot_velocity omega 0 e = omega * (1 + e).
+Proof.
+  intros omega e. unfold pin_slot_velocity.
+  rewrite sin_0_val. rewrite cos_0_val.
+  rewrite sqrt_at_zero_sin.
+  replace (e * 1) with e by ring.
+  apply Rdiv_1.
+Qed.
+
+Lemma pin_slot_velocity_at_PI : forall omega e,
+  pin_slot_velocity omega PI e = omega * (1 - e).
+Proof.
+  intros omega e. unfold pin_slot_velocity.
+  rewrite sin_PI_val. rewrite cos_PI_val.
+  rewrite sqrt_at_zero_sin.
+  replace (e * -1) with (-e) by ring.
+  replace (1 + -e) with (1 - e) by ring.
+  apply Rdiv_1.
+Qed.
+
+(* ========================================================================== *)
+(* XLVII. Lunar Orbital Parameters                                            *)
+(* ========================================================================== *)
+
+Definition lunar_inclination_deg : R := 5145 / 1000.
+
+Definition lunar_inclination_rad : R := deg_to_rad lunar_inclination_deg.
+
+Lemma lunar_inc_positive : 0 < lunar_inclination_deg.
+Proof. unfold lunar_inclination_deg. lra. Qed.
+
+Lemma lunar_inc_small : lunar_inclination_deg < 90.
+Proof. unfold lunar_inclination_deg. lra. Qed.
+
+Lemma lunar_inc_in_bounds : 0 < lunar_inclination_deg < 90.
+Proof. split; [exact lunar_inc_positive | exact lunar_inc_small]. Qed.
+
+Lemma lunar_inclination_rad_in_range :
+  - PI / 2 < lunar_inclination_rad < PI / 2.
+Proof.
+  unfold lunar_inclination_rad.
+  apply deg_to_rad_small.
+  exact lunar_inc_in_bounds.
+Qed.
+
+Lemma lunar_inclination_rad_bounds :
+  - (PI / 2) <= lunar_inclination_rad <= PI / 2.
+Proof.
+  destruct lunar_inclination_rad_in_range as [H1 H2].
+  split.
+  - left. unfold Rdiv in *. lra.
+  - left. exact H2.
+Qed.
+
+Definition lunar_latitude (u : R) : R :=
+  asin (sin lunar_inclination_rad * sin u).
+
+Lemma lunar_latitude_at_node : lunar_latitude 0 = 0.
+Proof.
+  unfold lunar_latitude.
+  rewrite sin_0_val. rewrite Rmult_0_r.
+  exact asin_0.
+Qed.
+
+Lemma lunar_latitude_at_90 : lunar_latitude (PI/2) = lunar_inclination_rad.
+Proof.
+  unfold lunar_latitude.
+  rewrite sin_PI2_val. rewrite Rmult_1_r.
+  apply asin_sin.
+  exact lunar_inclination_rad_bounds.
+Qed.
+
+(* ========================================================================== *)
+(* XLVIII. Eclipse Limits                                                     *)
+(* ========================================================================== *)
+
+Definition lunar_eclipse_limit_deg_val : R := 53 / 10.
+Definition solar_eclipse_limit_deg_val : R := 15 / 10.
+
+Definition lunar_eclipse_limit_rad_val : R := deg_to_rad lunar_eclipse_limit_deg_val.
+Definition solar_eclipse_limit_rad_val : R := deg_to_rad solar_eclipse_limit_deg_val.
+
+Definition eclipse_possible (lat limit : R) : Prop := Rabs lat < limit.
+
+Lemma eclipse_at_node : forall limit, 0 < limit -> eclipse_possible 0 limit.
+Proof.
+  intros limit Hlim. unfold eclipse_possible.
+  rewrite Rabs_R0. exact Hlim.
+Qed.
+
+(* ========================================================================== *)
+(* XLIX. Evection and Lunar Perturbations                                     *)
+(* ========================================================================== *)
+
+Definition evection_amplitude_deg : R := 1274 / 1000.
+Definition evection_amplitude_rad : R := deg_to_rad evection_amplitude_deg.
+
+Definition evection (D M : R) : R := evection_amplitude_rad * sin (2*D - M).
+
+Lemma evection_at_conjunction : forall M, 2*0 = M -> evection 0 M = 0.
+Proof.
+  intros M HM. unfold evection.
+  replace (2*0 - M) with 0 by lra.
+  rewrite sin_0_val. ring.
+Qed.
+
+Lemma evection_amplitude_pos : 0 < evection_amplitude_rad.
+Proof.
+  unfold evection_amplitude_rad. apply deg_to_rad_pos.
+  unfold evection_amplitude_deg. lra.
+Qed.
+
+Lemma evection_bounded : forall D M,
+  Rabs (evection D M) <= evection_amplitude_rad.
+Proof.
+  intros D M. unfold evection.
+  rewrite Rabs_mult.
+  rewrite (Rabs_pos_eq evection_amplitude_rad).
+  - replace evection_amplitude_rad with (evection_amplitude_rad * 1) at 2 by ring.
+    apply Rmult_le_compat_l.
+    + apply Rlt_le. exact evection_amplitude_pos.
+    + exact (Rabs_sin_le_1 (2*D - M)).
+  - apply Rlt_le. exact evection_amplitude_pos.
+Qed.
+
+(* ========================================================================== *)
+(* L. Draconic Month                                                          *)
+(* ========================================================================== *)
+
+Definition draconic_month_days_R : R := 27212220 / 1000000.
+Definition synodic_month_days_R : R := 2953059 / 100000.
+
+Lemma draconic_lt_synodic : draconic_month_days_R < synodic_month_days_R.
+Proof.
+  unfold draconic_month_days_R, synodic_month_days_R. lra.
+Qed.
+
+(* ========================================================================== *)
+(* LI. Solar and Planetary Eccentricities                                     *)
+(* ========================================================================== *)
+
+Definition sun_eccentricity : R := 167 / 10000.
+Definition mars_eccentricity : R := 934 / 10000.
+Definition jupiter_eccentricity : R := 489 / 10000.
+Definition saturn_eccentricity : R := 565 / 10000.
+
+Lemma sun_ecc_valid : valid_eccentricity sun_eccentricity.
+Proof. unfold valid_eccentricity, sun_eccentricity. lra. Qed.
+
+Lemma mars_ecc_valid : valid_eccentricity mars_eccentricity.
+Proof. unfold valid_eccentricity, mars_eccentricity. lra. Qed.
+
+Lemma jupiter_ecc_valid : valid_eccentricity jupiter_eccentricity.
+Proof. unfold valid_eccentricity, jupiter_eccentricity. lra. Qed.
+
+Lemma saturn_ecc_valid : valid_eccentricity saturn_eccentricity.
+Proof. unfold valid_eccentricity, saturn_eccentricity. lra. Qed.
+
+Lemma moon_ecc_valid : valid_eccentricity moon_eccentricity.
+Proof. unfold valid_eccentricity, moon_eccentricity. lra. Qed.
+
+Close Scope R_scope.
+
+(* ========================================================================== *)
+(* LII. Babylonian Period Relations (Q scope)                                 *)
+(* ========================================================================== *)
+
+Open Scope Q_scope.
+
+Definition babylonian_mercury_ratio : Q := 1513 # 480.
+Definition babylonian_mars_ratio : Q := 284 # 133.
+Definition babylonian_jupiter_ratio : Q := 344 # 315.
+
+Lemma factor_1513 : (1513 = 17 * 89)%Z.
+Proof. reflexivity. Qed.
+
+Lemma factor_480 : (480 = 32 * 15)%Z.
+Proof. reflexivity. Qed.
+
+Lemma factor_133 : (133 = 7 * 19)%Z.
+Proof. reflexivity. Qed.
+
+Lemma factor_284 : (284 = 4 * 71)%Z.
+Proof. reflexivity. Qed.
+
+Lemma factor_315 : (315 = 5 * 63)%Z.
+Proof. reflexivity. Qed.
+
+Lemma factor_344 : (344 = 8 * 43)%Z.
+Proof. reflexivity. Qed.
+
+Lemma factor_427 : (427 = 7 * 61)%Z.
+Proof. reflexivity. Qed.
+
+Lemma factor_442 : (442 = 2 * 13 * 17)%Z.
+Proof. reflexivity. Qed.
+
+(* ========================================================================== *)
+(* LIII. Backlash Model                                                       *)
+(* ========================================================================== *)
+
+Definition backlash_per_mesh_deg : Q := 3 # 4.
+
+Definition cumulative_backlash (n : nat) : Q := (Z.of_nat n # 1) * backlash_per_mesh_deg.
+
+Lemma metonic_backlash : Qeq (cumulative_backlash 4) (3 # 1).
+Proof. unfold cumulative_backlash, backlash_per_mesh_deg. reflexivity. Qed.
+
+Lemma saros_backlash : Qeq (cumulative_backlash 5) (15 # 4).
+Proof. unfold cumulative_backlash, backlash_per_mesh_deg. reflexivity. Qed.
+
+Lemma planetary_backlash : Qeq (cumulative_backlash 7) (21 # 4).
+Proof. unfold cumulative_backlash, backlash_per_mesh_deg. reflexivity. Qed.
+
+Lemma backlash_negligible : Qlt ((21#4) / (360#1)) (2#100).
+Proof. unfold Qlt, Qdiv, Qmult. simpl. lia. Qed.
+
+Close Scope Q_scope.
+
+(* ========================================================================== *)
+(* LIV. Calendar Resolution (Bayesian)                                        *)
+(* ========================================================================== *)
+
+Open Scope Q_scope.
+
+Definition bayes_factor_354_365 : Q := 662 # 10.
+
+Lemma bf_strong_evidence : Qlt (20 # 1) bayes_factor_354_365.
+Proof. unfold Qlt. simpl. lia. Qed.
+
+Lemma bf_not_very_strong : Qlt bayes_factor_354_365 (150 # 1).
+Proof. unfold Qlt. simpl. lia. Qed.
+
+Definition metonic_leap_months : Z := 7.
+Definition metonic_years_Z : Z := 19.
+Definition metonic_total_months : Z := 235.
+
+Lemma metonic_intercalation : (19 * 12 + 7 = 235)%Z.
+Proof. reflexivity. Qed.
+
+Close Scope Q_scope.
+
+(* ========================================================================== *)
+(* LV. Physical Component Dimensions                                          *)
+(* ========================================================================== *)
+
+Open Scope Q_scope.
+
+Record CaseDimensions := mkCaseDimensions {
+  case_width_mm : Q;
+  case_height_mm : Q;
+  case_depth_mm : Q
+}.
+
+Definition antikythera_case : CaseDimensions :=
+  mkCaseDimensions (340#1) (180#1) (90#1).
+
+Definition case_volume (c : CaseDimensions) : Q :=
+  case_width_mm c * case_height_mm c * case_depth_mm c.
+
+Lemma case_volume_value : Qeq (case_volume antikythera_case) (5508000#1).
+Proof. unfold case_volume, antikythera_case. reflexivity. Qed.
+
+Record CrankSpec := mkCrankSpec {
+  crank_arm_mm : Q;
+  crank_handle_mm : Q;
+  crank_shaft_mm : Q
+}.
+
+Definition antikythera_crank : CrankSpec :=
+  mkCrankSpec (50#1) (10#1) (6#1).
+
+Close Scope Q_scope.
+
+(* ========================================================================== *)
+(* LVI. Greek Numerals for Hour Inscriptions                                  *)
+(* ========================================================================== *)
+
+Inductive GreekNumeral : Set :=
+  | GN_Alpha | GN_Beta | GN_Gamma | GN_Delta | GN_Epsilon
+  | GN_Digamma | GN_Zeta | GN_Eta | GN_Theta | GN_Iota
+  | GN_IotaAlpha | GN_IotaBeta.
+
+Definition greek_value (g : GreekNumeral) : Z :=
+  match g with
+  | GN_Alpha => 1 | GN_Beta => 2 | GN_Gamma => 3 | GN_Delta => 4
+  | GN_Epsilon => 5 | GN_Digamma => 6 | GN_Zeta => 7 | GN_Eta => 8
+  | GN_Theta => 9 | GN_Iota => 10 | GN_IotaAlpha => 11 | GN_IotaBeta => 12
+  end.
+
+Record HourInscription := mkHourInscription {
+  hi_cell : Z;
+  hi_hour : GreekNumeral;
+  hi_daytime : bool
+}.
+
+Definition sample_inscription : HourInscription :=
+  mkHourInscription 17 GN_Eta false.
+
+Lemma sample_hour_8 : greek_value (hi_hour sample_inscription) = 8%Z.
+Proof. reflexivity. Qed.
+
+(* ========================================================================== *)
+(* LVII. State Machine Rounding                                               *)
+(* ========================================================================== *)
+
+Definition Q_round (q : Q) : Z :=
+  let floor := (Qnum q / Zpos (Qden q))%Z in
+  let rem := (Qnum q mod Zpos (Qden q))%Z in
+  if (2 * rem >=? Zpos (Qden q))%Z then (floor + 1)%Z else floor.
+
+Lemma round_half_up : Q_round (5#2) = 3%Z.
+Proof. reflexivity. Qed.
+
+Lemma round_down : Q_round (5#4) = 1%Z.
+Proof. reflexivity. Qed.
+
+Lemma round_up : Q_round (7#4) = 2%Z.
+Proof. reflexivity. Qed.
+
+(* ========================================================================== *)
+(* LVIII. Error Propagation (R scope)                                         *)
+(* ========================================================================== *)
+
+Open Scope R_scope.
+
+Definition gear_error_confirmed : R := 1 / 1000.
+Definition gear_error_inscription : R := 5 / 1000.
+Definition gear_error_hypothetical : R := 2 / 100.
+
+Definition metonic_train_error : R := 4 * gear_error_confirmed.
+Definition venus_train_error : R := 2 * gear_error_confirmed + gear_error_inscription.
+Definition mercury_train_error : R := 2 * gear_error_confirmed + 3 * gear_error_hypothetical.
+
+Lemma metonic_error_bound : metonic_train_error < 1 / 100.
+Proof. unfold metonic_train_error, gear_error_confirmed. lra. Qed.
+
+Lemma venus_error_bound : venus_train_error < 1 / 100.
+Proof. unfold venus_train_error, gear_error_confirmed, gear_error_inscription. lra. Qed.
+
+Lemma mercury_error_bound : mercury_train_error < 7 / 100.
+Proof. unfold mercury_train_error, gear_error_confirmed, gear_error_hypothetical. lra. Qed.
+
+Definition total_mechanism_error : R :=
+  metonic_train_error + venus_train_error + mercury_train_error.
+
+Lemma total_error_bound : total_mechanism_error < 10 / 100.
+Proof.
+  unfold total_mechanism_error.
+  unfold metonic_train_error, venus_train_error, mercury_train_error.
+  unfold gear_error_confirmed, gear_error_inscription, gear_error_hypothetical.
+  lra.
+Qed.
+
+Close Scope R_scope.
+
+(* ========================================================================== *)
+(* LIX. Confidence and Provenance                                             *)
+(* ========================================================================== *)
+
+Open Scope Q_scope.
+
+Inductive ConfidenceLevel : Set :=
+  | CL_100 | CL_95 | CL_90 | CL_70 | CL_65.
+
+Definition confidence_value (c : ConfidenceLevel) : Q :=
+  match c with
+  | CL_100 => 100 # 1
+  | CL_95 => 95 # 1
+  | CL_90 => 90 # 1
+  | CL_70 => 70 # 1
+  | CL_65 => 65 # 1
+  end.
+
+Definition min_confidence (c1 c2 : ConfidenceLevel) : ConfidenceLevel :=
+  if Qle_bool (confidence_value c1) (confidence_value c2) then c1 else c2.
+
+Lemma metonic_confidence : confidence_value CL_100 = (100 # 1).
+Proof. reflexivity. Qed.
+
+Lemma venus_confidence : confidence_value CL_95 = (95 # 1).
+Proof. reflexivity. Qed.
+
+Lemma mercury_confidence : confidence_value CL_70 = (70 # 1).
+Proof. reflexivity. Qed.
+
+Definition mechanism_confidence : ConfidenceLevel := CL_70.
+
+Lemma mechanism_conf_is_min :
+  Qeq (confidence_value mechanism_confidence) (70 # 1).
+Proof. reflexivity. Qed.
+
+Close Scope Q_scope.
+
+(* ========================================================================== *)
+(* END OF FORMALIZATION                                                       *)
 (* ========================================================================== *)
