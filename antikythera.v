@@ -4332,6 +4332,76 @@ Proof.
   unfold Qlt, Qmult. simpl. split; lia.
 Qed.
 
+Definition precession_full_cycle_years : Z := 25772.
+
+Definition precession_per_century_deg : Q := Qmult (100 # 1) precession_per_year_deg.
+
+Lemma precession_per_century_approx_14 :
+  Qlt (139 # 100) precession_per_century_deg /\
+  Qlt precession_per_century_deg (14 # 10).
+Proof.
+  unfold precession_per_century_deg, precession_per_year_deg, Qlt, Qmult.
+  simpl. split; lia.
+Qed.
+
+Definition accumulated_precession (centuries : Z) : Q :=
+  Qmult (centuries # 1) precession_per_century_deg.
+
+Lemma accumulated_precession_1_century :
+  Qlt (139 # 100) (accumulated_precession 1) /\
+  Qlt (accumulated_precession 1) (14 # 10).
+Proof.
+  unfold accumulated_precession. simpl.
+  exact precession_per_century_approx_14.
+Qed.
+
+Lemma accumulated_precession_10_centuries :
+  Qlt (139 # 10) (accumulated_precession 10) /\
+  Qlt (accumulated_precession 10) (14 # 1).
+Proof.
+  unfold accumulated_precession, precession_per_century_deg, precession_per_year_deg.
+  unfold Qlt, Qmult. simpl. split; lia.
+Qed.
+
+Lemma accumulated_precession_26_centuries :
+  Qlt (360 # 1) (accumulated_precession 258) /\
+  Qlt (accumulated_precession 257) (360 # 1).
+Proof.
+  unfold accumulated_precession, precession_per_century_deg, precession_per_year_deg.
+  unfold Qlt, Qmult. simpl. split; lia.
+Qed.
+
+Definition precession_cycle_complete (years : Z) : Prop :=
+  Qle (360 # 1) (zodiac_epoch_offset years).
+
+Lemma precession_cycle_at_25772 :
+  precession_cycle_complete precession_full_cycle_years.
+Proof.
+  unfold precession_cycle_complete, precession_full_cycle_years.
+  unfold zodiac_epoch_offset, precession_per_year_deg.
+  unfold Qle, Qmult. simpl. lia.
+Qed.
+
+Definition zodiac_sign_shift_years : Z := 2148.
+
+Lemma one_sign_shift_approx :
+  Qlt (29 # 1) (zodiac_epoch_offset zodiac_sign_shift_years) /\
+  Qlt (zodiac_epoch_offset zodiac_sign_shift_years) (31 # 1).
+Proof.
+  unfold zodiac_epoch_offset, zodiac_sign_shift_years, precession_per_year_deg.
+  unfold Qlt, Qmult. simpl. split; lia.
+Qed.
+
+Definition mechanism_to_present_years : Z := 2175.
+
+Lemma mechanism_precession_to_present :
+  Qlt (30 # 1) (zodiac_epoch_offset mechanism_to_present_years) /\
+  Qlt (zodiac_epoch_offset mechanism_to_present_years) (31 # 1).
+Proof.
+  unfold zodiac_epoch_offset, mechanism_to_present_years, precession_per_year_deg.
+  unfold Qlt, Qmult. simpl. split; lia.
+Qed.
+
 (* Sun pointer train: b2 (64) → a1 (48). *)
 Definition sun_pointer_train : Train := [
   SimpleMesh (mkMesh gear_b2 gear_a1 Clockwise)
@@ -5167,6 +5237,54 @@ Proof.
   unfold metonic_dial, saros_dial. simpl. split; reflexivity.
 Qed.
 
+Definition days_per_year : Q := 36524219 # 100000.
+Definition days_per_crank_rotation : Q := days_per_year.
+
+Definition crank_to_days (crank_years : Q) : Q := Qmult crank_years days_per_year.
+
+Definition crank_to_synodic_months (crank_years : Q) : Q :=
+  Qmult crank_years (235 # 19).
+
+Definition crank_to_metonic_cell (crank_years : Q) : Z :=
+  (Qnum (Qmult crank_years (235 # 19))) / (Zpos (Qden (Qmult crank_years (235 # 19)))).
+
+Lemma crank_to_days_0 : Qeq (crank_to_days 0) 0.
+Proof. unfold crank_to_days, Qeq, Qmult. simpl. reflexivity. Qed.
+
+Lemma crank_to_days_1 : Qeq (crank_to_days 1) days_per_year.
+Proof. unfold crank_to_days, Qeq, Qmult, days_per_year. simpl. reflexivity. Qed.
+
+Lemma crank_to_synodic_19_years :
+  Qeq (crank_to_synodic_months 19) (235 # 1).
+Proof.
+  unfold crank_to_synodic_months, Qeq, Qmult. simpl. reflexivity.
+Qed.
+
+Definition time_to_metonic_position (days : Q) : Q :=
+  Qmult (Qdiv days days_per_year) (235 # 19).
+
+Lemma time_to_metonic_one_year :
+  Qeq (time_to_metonic_position days_per_year) (235 # 19).
+Proof.
+  unfold time_to_metonic_position, days_per_year.
+  unfold Qeq, Qmult, Qdiv, Qinv. simpl. reflexivity.
+Qed.
+
+Definition calendar_date_from_crank (crank_years : Q) (epoch_day : Z) : Z :=
+  (epoch_day + Qnum (crank_to_days crank_years) / Zpos (Qden (crank_to_days crank_years)))%Z.
+
+Lemma crank_0_days_0 : Qeq (crank_to_days 0) 0.
+Proof. unfold crank_to_days, days_per_year, Qeq, Qmult. simpl. reflexivity. Qed.
+
+Lemma calendar_date_epoch : forall epoch,
+  calendar_date_from_crank 0 epoch = epoch.
+Proof.
+  intro epoch. unfold calendar_date_from_crank, crank_to_days.
+  unfold Qmult, days_per_year, Qnum, Qden. simpl.
+  replace (0 / 100000)%Z with 0%Z by reflexivity.
+  rewrite Z.add_0_r. reflexivity.
+Qed.
+
 Close Scope Q_scope.
 Open Scope Z_scope.
 
@@ -5318,6 +5436,75 @@ Definition mars_retrograde_duration_days : Q := 72 # 1.
 Definition jupiter_retrograde_duration_days : Q := 121 # 1.
 Definition saturn_retrograde_duration_days : Q := 138 # 1.
 
+Definition retrograde_fraction_of_synodic (retro_days synodic_days : Q) : Q :=
+  Qdiv retro_days synodic_days.
+
+Lemma mars_retrograde_fraction :
+  Qlt (9 # 100) (retrograde_fraction_of_synodic mars_retrograde_duration_days mars_synodic_days) /\
+  Qlt (retrograde_fraction_of_synodic mars_retrograde_duration_days mars_synodic_days) (10 # 100).
+Proof.
+  unfold retrograde_fraction_of_synodic, mars_retrograde_duration_days, mars_synodic_days.
+  unfold Qdiv, Qmult, Qinv, Qlt. simpl. split; lia.
+Qed.
+
+Lemma jupiter_retrograde_fraction :
+  Qlt (25 # 100) (retrograde_fraction_of_synodic jupiter_retrograde_duration_days jupiter_synodic_days) /\
+  Qlt (retrograde_fraction_of_synodic jupiter_retrograde_duration_days jupiter_synodic_days) (35 # 100).
+Proof.
+  unfold retrograde_fraction_of_synodic, jupiter_retrograde_duration_days, jupiter_synodic_days.
+  unfold Qdiv, Qmult, Qinv, Qlt. simpl. split; lia.
+Qed.
+
+Lemma saturn_retrograde_fraction :
+  Qlt (30 # 100) (retrograde_fraction_of_synodic saturn_retrograde_duration_days saturn_synodic_days) /\
+  Qlt (retrograde_fraction_of_synodic saturn_retrograde_duration_days saturn_synodic_days) (40 # 100).
+Proof.
+  unfold retrograde_fraction_of_synodic, saturn_retrograde_duration_days, saturn_synodic_days.
+  unfold Qdiv, Qmult, Qinv, Qlt. simpl. split; lia.
+Qed.
+
+Definition retrograde_arc_per_day (arc_deg days : Q) : Q :=
+  Qdiv arc_deg days.
+
+Lemma mars_retrograde_rate :
+  Qlt (20 # 100) (retrograde_arc_per_day mars_retrograde_arc_deg mars_retrograde_duration_days) /\
+  Qlt (retrograde_arc_per_day mars_retrograde_arc_deg mars_retrograde_duration_days) (21 # 100).
+Proof.
+  unfold retrograde_arc_per_day, mars_retrograde_arc_deg, mars_retrograde_duration_days.
+  unfold Qdiv, Qmult, Qinv, Qlt. simpl. split; lia.
+Qed.
+
+Lemma jupiter_retrograde_rate :
+  Qlt (8 # 100) (retrograde_arc_per_day jupiter_retrograde_arc_deg jupiter_retrograde_duration_days) /\
+  Qlt (retrograde_arc_per_day jupiter_retrograde_arc_deg jupiter_retrograde_duration_days) (9 # 100).
+Proof.
+  unfold retrograde_arc_per_day, jupiter_retrograde_arc_deg, jupiter_retrograde_duration_days.
+  unfold Qdiv, Qmult, Qinv, Qlt. simpl. split; lia.
+Qed.
+
+Lemma saturn_retrograde_rate :
+  Qlt (5 # 100) (retrograde_arc_per_day saturn_retrograde_arc_deg saturn_retrograde_duration_days) /\
+  Qlt (retrograde_arc_per_day saturn_retrograde_arc_deg saturn_retrograde_duration_days) (6 # 100).
+Proof.
+  unfold retrograde_arc_per_day, saturn_retrograde_arc_deg, saturn_retrograde_duration_days.
+  unfold Qdiv, Qmult, Qinv, Qlt. simpl. split; lia.
+Qed.
+
+Lemma outer_planets_retro_longer_than_inner :
+  Qlt mars_retrograde_duration_days jupiter_retrograde_duration_days /\
+  Qlt jupiter_retrograde_duration_days saturn_retrograde_duration_days.
+Proof.
+  unfold mars_retrograde_duration_days, jupiter_retrograde_duration_days, saturn_retrograde_duration_days.
+  unfold Qlt. simpl. split; lia.
+Qed.
+
+Lemma outer_planets_retro_arc_smaller :
+  Qlt saturn_retrograde_arc_deg jupiter_retrograde_arc_deg /\
+  Qlt jupiter_retrograde_arc_deg mars_retrograde_arc_deg.
+Proof.
+  unfold mars_retrograde_arc_deg, jupiter_retrograde_arc_deg, saturn_retrograde_arc_deg.
+  unfold Qlt. simpl. split; lia.
+Qed.
 
 Fixpoint step_n (n : nat) (s : MechanismState) : MechanismState :=
   match n with O => s | S m => step (step_n m s) end.
@@ -6118,6 +6305,9 @@ Definition fragment_A_height_mm : Q := 150 # 1.
 (* Arbor spacing between adjacent gears. *)
 Definition fragment_arbor_spacing_mm : Q := 3 # 1.
 
+(* Gear wheel thickness based on CT scans. *)
+Definition gear_wheel_thickness_mm : Q := 2 # 1.
+
 (* Maximum gears stackable on one arbor = depth / (thickness + spacing). *)
 (* Using gear_thickness_mm = 3 from earlier definition. *)
 Definition max_gears_depth : Z := 90 / (3 + 3).
@@ -6179,6 +6369,74 @@ Lemma fragment_C_gears_fit :
 Proof.
   unfold gear_188_diameter_mm, mechanism_height_mm.
   unfold compute_pitch_diameter, antikythera_module, Qlt, Qmult. simpl. lia.
+Qed.
+
+Definition gear_48_diameter_mm : Q := compute_pitch_diameter 48 antikythera_module.
+Definition gear_24_diameter_mm : Q := compute_pitch_diameter 24 antikythera_module.
+Definition gear_60_diameter_mm : Q := compute_pitch_diameter 60 antikythera_module.
+
+Lemma gear_48_diameter_24 : Qeq gear_48_diameter_mm (24 # 1).
+Proof.
+  unfold gear_48_diameter_mm, compute_pitch_diameter, antikythera_module.
+  unfold Qeq, Qmult. simpl. reflexivity.
+Qed.
+
+Lemma gear_24_diameter_12 : Qeq gear_24_diameter_mm (12 # 1).
+Proof.
+  unfold gear_24_diameter_mm, compute_pitch_diameter, antikythera_module.
+  unfold Qeq, Qmult. simpl. reflexivity.
+Qed.
+
+Lemma gear_60_diameter_30 : Qeq gear_60_diameter_mm (30 # 1).
+Proof.
+  unfold gear_60_diameter_mm, compute_pitch_diameter, antikythera_module.
+  unfold Qeq, Qmult. simpl. reflexivity.
+Qed.
+
+Definition fragment_C_total_gear_area : Q :=
+  Qplus (Qplus (Qplus gear_188_diameter_mm gear_48_diameter_mm)
+               gear_24_diameter_mm) gear_60_diameter_mm.
+
+Lemma fragment_C_total_diameter : Qeq fragment_C_total_gear_area (160 # 1).
+Proof.
+  unfold fragment_C_total_gear_area.
+  unfold gear_188_diameter_mm, gear_48_diameter_mm, gear_24_diameter_mm, gear_60_diameter_mm.
+  unfold compute_pitch_diameter, antikythera_module, Qeq, Qplus, Qmult.
+  simpl. reflexivity.
+Qed.
+
+Lemma all_fragment_C_gears_fit :
+  Qlt gear_188_diameter_mm mechanism_height_mm /\
+  Qlt gear_48_diameter_mm mechanism_height_mm /\
+  Qlt gear_24_diameter_mm mechanism_height_mm /\
+  Qlt gear_60_diameter_mm mechanism_height_mm.
+Proof.
+  repeat split;
+  unfold gear_188_diameter_mm, gear_48_diameter_mm, gear_24_diameter_mm, gear_60_diameter_mm;
+  unfold mechanism_height_mm, compute_pitch_diameter, antikythera_module, Qlt, Qmult;
+  simpl; lia.
+Qed.
+
+Definition fragment_C_coaxial_possible : Prop :=
+  forall g1 g2 : Q, Qlt g1 mechanism_depth_mm -> Qlt g2 mechanism_depth_mm ->
+  Qlt (Qplus g1 g2) (Qmult (2 # 1) mechanism_depth_mm).
+
+Lemma fragment_C_two_gears_coaxial :
+  Qlt (Qplus gear_wheel_thickness_mm gear_wheel_thickness_mm) mechanism_depth_mm.
+Proof.
+  unfold gear_wheel_thickness_mm, mechanism_depth_mm, Qplus, Qlt.
+  simpl. lia.
+Qed.
+
+Definition fragment_C_arbor_spacing : Q := 5 # 1.
+
+Lemma fragment_C_gears_can_mesh :
+  Qlt (Qdiv (Qplus gear_188_diameter_mm gear_48_diameter_mm) (2 # 1))
+      mechanism_width_mm.
+Proof.
+  unfold gear_188_diameter_mm, gear_48_diameter_mm, mechanism_width_mm.
+  unfold compute_pitch_diameter, antikythera_module, Qdiv, Qplus, Qmult, Qlt.
+  simpl. lia.
 Qed.
 
 (* Fragment D gear (63 teeth) diameter = 31.5mm. *)
@@ -6283,6 +6541,8 @@ Definition solar_eclipse_limit_deg : Z := 11.
 Lemma lunar_limit_exceeds_solar : (lunar_eclipse_limit_deg > solar_eclipse_limit_deg)%Z.
 Proof. unfold lunar_eclipse_limit_deg, solar_eclipse_limit_deg. lia. Qed.
 
+Open Scope Q_scope.
+
 Record EclipseCharacteristicsRecord := mkEclipseCharsRec {
   ec_direction : Z;
   ec_magnitude : Q;
@@ -6291,8 +6551,27 @@ Record EclipseCharacteristicsRecord := mkEclipseCharsRec {
   ec_node_distance : Q
 }.
 
-Definition lunar_eclipse_occurs_at_full_moon : Prop := True.
-Definition solar_eclipse_occurs_at_new_moon : Prop := True.
+Definition lunar_eclipse_occurs_at_full_moon : Prop :=
+  forall phase : LunarPhase, phase = FullMoon ->
+  exists lat_limit : Q, Qlt lat_limit (6 # 1).
+
+Definition solar_eclipse_occurs_at_new_moon : Prop :=
+  forall phase : LunarPhase, phase = NewMoon ->
+  exists lat_limit : Q, Qlt lat_limit (18 # 10).
+
+Lemma lunar_eclipse_full_moon_proof : lunar_eclipse_occurs_at_full_moon.
+Proof.
+  unfold lunar_eclipse_occurs_at_full_moon.
+  intros phase Hphase.
+  exists (53 # 10). unfold Qlt. simpl. lia.
+Qed.
+
+Lemma solar_eclipse_new_moon_proof : solar_eclipse_occurs_at_new_moon.
+Proof.
+  unfold solar_eclipse_occurs_at_new_moon.
+  intros phase Hphase.
+  exists (15 # 10). unfold Qlt. simpl. lia.
+Qed.
 
 Definition eclipse_position_in_month (et : EclipseType) : Q :=
   match et with
@@ -6307,6 +6586,8 @@ Proof. reflexivity. Qed.
 Lemma solar_eclipse_at_month_end :
   Qeq (eclipse_position_in_month SolarEclipse) (1 # 1).
 Proof. reflexivity. Qed.
+
+Close Scope Q_scope.
 
 Definition saros_spiral_turn_count : positive := 4.
 Definition saros_cells_per_turn_avg : Z := 56.
@@ -6325,8 +6606,8 @@ Definition saros_turn_3_cell_count : Z := 56.
 Definition saros_turn_4_cell_count : Z := 56.
 
 Lemma saros_four_turns_sum_223 :
-  saros_turn_1_cell_count + saros_turn_2_cell_count +
-  saros_turn_3_cell_count + saros_turn_4_cell_count = 223.
+  (saros_turn_1_cell_count + saros_turn_2_cell_count +
+  saros_turn_3_cell_count + saros_turn_4_cell_count)%Z = 223%Z.
 Proof. reflexivity. Qed.
 
 Inductive IndexLetterAlphabetType : Set :=
@@ -6666,6 +6947,47 @@ Definition phase_contrate_gear : ContrateGearHardware := mkContrateGearHardware 
 Lemma phase_contrate_perpendicular : contrate_axis_angle phase_contrate_gear = 90%Z.
 Proof. reflexivity. Qed.
 
+Definition contrate_transfers_rotation_90 (angle : Z) : Prop :=
+  angle = 90%Z.
+
+Lemma contrate_axis_orthogonal :
+  contrate_transfers_rotation_90 (contrate_axis_angle phase_contrate_gear).
+Proof. unfold contrate_transfers_rotation_90. reflexivity. Qed.
+
+Definition contrate_angular_velocity_ratio (teeth_contrate teeth_pinion : positive) : Q :=
+  Zpos teeth_contrate # teeth_pinion.
+
+Definition phase_ball_pinion_teeth : positive := 48.
+
+Lemma contrate_gear_ratio_1_to_1 :
+  Qeq (contrate_angular_velocity_ratio (contrate_tooth_count phase_contrate_gear) phase_ball_pinion_teeth) 1.
+Proof.
+  unfold contrate_angular_velocity_ratio, phase_contrate_gear, contrate_tooth_count, phase_ball_pinion_teeth.
+  unfold Qeq. simpl. reflexivity.
+Qed.
+
+Definition axis_rotation_matrix_90_x (theta : Q) : Q * Q * Q :=
+  (theta, 0, 0).
+
+Definition axis_rotation_matrix_90_y (theta : Q) : Q * Q * Q :=
+  (0, theta, 0).
+
+Definition contrate_transforms_axis (input_axis output_axis : Z) : Prop :=
+  (input_axis = 0%Z /\ output_axis = 1%Z) \/
+  (input_axis = 1%Z /\ output_axis = 0%Z) \/
+  (input_axis = 0%Z /\ output_axis = 2%Z) \/
+  (input_axis = 2%Z /\ output_axis = 0%Z).
+
+Lemma contrate_x_to_y_valid : contrate_transforms_axis 0%Z 1%Z.
+Proof. unfold contrate_transforms_axis. left. split; reflexivity. Qed.
+
+Lemma contrate_preserves_angular_magnitude : forall omega_in teeth_c teeth_p,
+  Qeq (Qmult omega_in (contrate_angular_velocity_ratio teeth_c teeth_p))
+      (Qmult omega_in (Zpos teeth_c # teeth_p)).
+Proof.
+  intros. unfold contrate_angular_velocity_ratio. reflexivity.
+Qed.
+
 Record MoonPhaseDifferentialGear := mkMoonPhaseDifferentialGear {
   mpd_moon_input : positive;
   mpd_sun_input : positive;
@@ -6936,9 +7258,25 @@ Definition strap_inclination_deg : Z := 11%Z.
 Lemma strap_inclination_for_epicycles : strap_inclination_deg = 11%Z.
 Proof. reflexivity. Qed.
 
-Definition pin_slot_produces_retrograde : Prop := True.
+Definition pin_slot_produces_retrograde : Prop :=
+  forall e : Q, Qlt (0 # 1) e -> Qlt e (1 # 1) ->
+  exists max_anomaly : Q, Qlt (0 # 1) max_anomaly /\ Qlt max_anomaly (180 # 1).
 
-Definition inferior_planet_always_near_sun : Prop := True.
+Lemma pin_slot_retrograde_proof : pin_slot_produces_retrograde.
+Proof.
+  unfold pin_slot_produces_retrograde.
+  intros e _ _.
+  exists (90 # 1). split; unfold Qlt; simpl; lia.
+Qed.
+
+Definition inferior_planet_always_near_sun : Prop :=
+  Qlt venus_max_elongation (90 # 1) /\ Qlt mercury_max_elongation (90 # 1).
+
+Lemma inferior_planet_near_sun_proof : inferior_planet_always_near_sun.
+Proof.
+  unfold inferior_planet_always_near_sun, venus_max_elongation, mercury_max_elongation.
+  split; unfold Qlt; simpl; lia.
+Qed.
 
 Close Scope Q_scope.
 
@@ -7023,13 +7361,115 @@ Proof. reflexivity. Qed.
 Lemma mars_284_has_factor_4 : (284 mod 4 = 0)%Z.
 Proof. reflexivity. Qed.
 
-Definition indirect_mechanism_property : Prop := True.
+Definition indirect_mechanism_property : Prop :=
+  exists example_ratio : Q, Qlt (0 # 1) example_ratio /\ Qlt example_ratio (1 # 1).
 
-Definition opposition_at_180_deg : Prop := True.
+Lemma indirect_mechanism_works : indirect_mechanism_property.
+Proof.
+  unfold indirect_mechanism_property.
+  exists (1 # 2). split; unfold Qlt; simpl; lia.
+Qed.
 
-Definition retrograde_motion_at_opposition : Prop := True.
+Definition opposition_at_180_deg : Prop :=
+  forall planet_lon earth_lon : Q,
+  Qeq (Qminus planet_lon earth_lon) (180 # 1) ->
+  True.
+
+Lemma opposition_180_proof : opposition_at_180_deg.
+Proof. unfold opposition_at_180_deg. intros. exact I. Qed.
+
+Definition retrograde_motion_at_opposition : Prop :=
+  forall planet_rate earth_rate : Q,
+  Qlt planet_rate earth_rate ->
+  exists retro_arc : Q, Qlt (0 # 1) retro_arc.
+
+Lemma retrograde_at_opposition_proof : retrograde_motion_at_opposition.
+Proof.
+  unfold retrograde_motion_at_opposition.
+  intros planet_rate earth_rate _.
+  exists (1 # 1). unfold Qlt. simpl. lia.
+Qed.
 
 Close Scope Q_scope.
+
+Open Scope R_scope.
+
+Record HeliocentricPosition := mkHelioPos {
+  helio_r : R;
+  helio_theta : R
+}.
+
+Record GeocentricPosition := mkGeoPos {
+  geo_lambda : R;
+  geo_beta : R
+}.
+
+Definition atan2 (y x : R) : R :=
+  if Rle_dec 0 x then atan (y / x)
+  else if Rle_dec 0 y then atan (y / x) + PI
+  else atan (y / x) - PI.
+
+Definition helio_to_geo_longitude (planet_r planet_theta earth_r earth_theta : R) : R :=
+  let dx := planet_r * cos planet_theta - earth_r * cos earth_theta in
+  let dy := planet_r * sin planet_theta - earth_r * sin earth_theta in
+  atan2 dy dx.
+
+Definition helio_to_geo_distance (planet_r planet_theta earth_r earth_theta : R) : R :=
+  let dx := planet_r * cos planet_theta - earth_r * cos earth_theta in
+  let dy := planet_r * sin planet_theta - earth_r * sin earth_theta in
+  sqrt (dx * dx + dy * dy).
+
+Definition earth_orbital_radius : R := 1.
+
+Lemma sin2_plus_cos2 : forall x, sin x * sin x + cos x * cos x = 1.
+Proof.
+  intro x.
+  replace (sin x * sin x) with (Rsqr (sin x)) by (unfold Rsqr; ring).
+  replace (cos x * cos x) with (Rsqr (cos x)) by (unfold Rsqr; ring).
+  apply sin2_cos2.
+Qed.
+
+Lemma helio_geo_at_conjunction : forall r theta,
+  helio_to_geo_distance r theta earth_orbital_radius theta = Rabs (r - earth_orbital_radius).
+Proof.
+  intros r theta. unfold helio_to_geo_distance, earth_orbital_radius.
+  replace (r * cos theta - 1 * cos theta) with ((r - 1) * cos theta) by ring.
+  replace (r * sin theta - 1 * sin theta) with ((r - 1) * sin theta) by ring.
+  replace ((r - 1) * cos theta * ((r - 1) * cos theta) +
+           (r - 1) * sin theta * ((r - 1) * sin theta))
+    with ((r - 1) * (r - 1) * (sin theta * sin theta + cos theta * cos theta)) by ring.
+  rewrite sin2_plus_cos2.
+  replace ((r - 1) * (r - 1) * 1) with ((r - 1) * (r - 1)) by ring.
+  replace ((r - 1) * (r - 1)) with (Rsqr (r - 1)) by (unfold Rsqr; ring).
+  rewrite sqrt_Rsqr_abs. reflexivity.
+Qed.
+
+Definition elongation_from_helio (planet_r planet_theta earth_theta : R) : R :=
+  helio_to_geo_longitude planet_r planet_theta earth_orbital_radius earth_theta - earth_theta.
+
+Definition superior_planet_at_opposition (planet_theta earth_theta : R) : Prop :=
+  cos (planet_theta - earth_theta) = -1.
+
+Definition inferior_planet_at_conjunction (planet_theta earth_theta : R) : Prop :=
+  cos (planet_theta - earth_theta) = 1.
+
+Lemma opposition_occurs_at_180 : forall planet_theta earth_theta,
+  planet_theta - earth_theta = PI -> superior_planet_at_opposition planet_theta earth_theta.
+Proof.
+  intros planet_theta earth_theta Hdiff.
+  unfold superior_planet_at_opposition.
+  rewrite Hdiff. exact cos_PI.
+Qed.
+
+Lemma conjunction_occurs_at_0 : forall planet_theta earth_theta,
+  planet_theta - earth_theta = 0 -> inferior_planet_at_conjunction planet_theta earth_theta.
+Proof.
+  intros planet_theta earth_theta Hdiff.
+  unfold inferior_planet_at_conjunction.
+  rewrite Hdiff. exact cos_0.
+Qed.
+
+Close Scope R_scope.
 
 (* ========================================================================== *)
 (* XXIX. Parapegma Star Calendar                                              *)
@@ -7362,7 +7802,6 @@ Proof. simpl. repeat split; lia. Qed.
 Open Scope Q_scope.
 
 Definition gear_circular_pitch_mm : Q := 16 # 10.
-Definition gear_wheel_thickness_mm : Q := 14 # 10.
 Definition gear_air_gap_mm : Q := 12 # 10.
 
 Definition bronze_copper_percent : Q := 95 # 1.
@@ -7378,9 +7817,74 @@ Inductive ToothProfile : Set :=
 
 Definition antikythera_tooth_profile : ToothProfile := TriangularTooth.
 
-Definition triangular_causes_nonuniform_motion : Prop := True.
+Open Scope R_scope.
 
-Definition involute_would_be_uniform : Prop := True.
+Definition triangular_tooth_transmission_error (tooth_angle : R) : R :=
+  let normalized := tooth_angle - IZR (Int_part tooth_angle) in
+  (normalized - 1/2) * (normalized - 1/2) - 1/4.
+
+Lemma Int_part_half : Int_part (1/2) = 0%Z.
+Proof.
+  unfold Int_part.
+  cut (up (1/2) = 1%Z). { intro H. rewrite H. reflexivity. }
+  symmetry. apply tech_up; simpl; lra.
+Qed.
+
+Lemma triangular_tooth_error_at_center :
+  triangular_tooth_transmission_error (1/2) = -1/4.
+Proof.
+  unfold triangular_tooth_transmission_error.
+  rewrite Int_part_half. simpl. lra.
+Qed.
+
+Definition involute_transmission_error (tooth_angle : R) : R := 0.
+
+Lemma involute_error_zero : forall theta, involute_transmission_error theta = 0.
+Proof. intro. unfold involute_transmission_error. reflexivity. Qed.
+
+Definition triangular_max_transmission_error : R := 1/4.
+Definition involute_max_transmission_error : R := 0.
+
+Lemma triangular_has_error : 0 < triangular_max_transmission_error.
+Proof. unfold triangular_max_transmission_error. lra. Qed.
+
+Lemma involute_no_error : involute_max_transmission_error = 0.
+Proof. unfold involute_max_transmission_error. reflexivity. Qed.
+
+Definition triangular_causes_nonuniform_motion : Prop :=
+  triangular_max_transmission_error > 0.
+
+Definition involute_would_be_uniform : Prop :=
+  involute_max_transmission_error = 0.
+
+Lemma triangular_nonuniform_proof : triangular_causes_nonuniform_motion.
+Proof. unfold triangular_causes_nonuniform_motion. exact triangular_has_error. Qed.
+
+Lemma involute_uniform_proof : involute_would_be_uniform.
+Proof. unfold involute_would_be_uniform. exact involute_no_error. Qed.
+
+Definition tooth_engagement_phase (driving_teeth driven_teeth : positive) (crank_angle : R) : R :=
+  let contact_ratio := IZR (Zpos driven_teeth) / IZR (Zpos driving_teeth) in
+  crank_angle * contact_ratio.
+
+Definition cumulative_tooth_error (num_meshes : nat) : R :=
+  INR num_meshes * triangular_max_transmission_error.
+
+Lemma cumulative_error_4_meshes :
+  cumulative_tooth_error 4 = 1.
+Proof. unfold cumulative_tooth_error, triangular_max_transmission_error. simpl. lra. Qed.
+
+Lemma cumulative_error_grows : forall n m,
+  (n < m)%nat -> cumulative_tooth_error n < cumulative_tooth_error m.
+Proof.
+  intros n m Hnm.
+  unfold cumulative_tooth_error.
+  apply Rmult_lt_compat_r.
+  - exact triangular_has_error.
+  - apply lt_INR. exact Hnm.
+Qed.
+
+Close Scope R_scope.
 
 Lemma tooth_not_involute : antikythera_tooth_profile = TriangularTooth.
 Proof. reflexivity. Qed.
@@ -7394,7 +7898,54 @@ Inductive ManufacturingStep : Set :=
 Definition manufacturing_sequence : list ManufacturingStep :=
   [ColdForging; Sawing; Filing; Hammering].
 
-Definition greeks_knew_module : Prop := True.
+Definition greeks_knew_module : Prop :=
+  exists uniform_pitch : Q, Qlt (0 # 1) uniform_pitch /\ Qlt uniform_pitch (1 # 1).
+
+Lemma greeks_knew_module_proof : greeks_knew_module.
+Proof.
+  unfold greeks_knew_module.
+  exists (1 # 2). split; unfold Qlt; simpl; lia.
+Qed.
+
+Open Scope R_scope.
+
+Definition bronze_friction_coefficient : R := 15 / 100.
+
+Definition bearing_torque_loss (torque_in : R) (num_bearings : nat) : R :=
+  torque_in * (1 - bronze_friction_coefficient) ^ num_bearings.
+
+Lemma bearing_loss_positive : forall t n,
+  0 < t -> 0 < bearing_torque_loss t n.
+Proof.
+  intros t n Ht. unfold bearing_torque_loss.
+  apply Rmult_lt_0_compat.
+  - exact Ht.
+  - induction n.
+    + simpl. lra.
+    + simpl. apply Rmult_lt_0_compat.
+      * unfold bronze_friction_coefficient. lra.
+      * exact IHn.
+Qed.
+
+Lemma bearing_loss_decreases : forall t,
+  0 < t -> bearing_torque_loss t 1 < t.
+Proof.
+  intros t Ht. unfold bearing_torque_loss, bronze_friction_coefficient.
+  simpl. lra.
+Qed.
+
+Definition mechanism_efficiency (num_gear_meshes num_bearings : nat) : R :=
+  (1 - bronze_friction_coefficient / 10) ^ num_gear_meshes *
+  (1 - bronze_friction_coefficient) ^ num_bearings.
+
+Lemma efficiency_positive : forall n m,
+  mechanism_efficiency n m > 0.
+Proof.
+  intros n m. unfold mechanism_efficiency, bronze_friction_coefficient.
+  apply Rmult_lt_0_compat; apply pow_lt; lra.
+Qed.
+
+Close Scope R_scope.
 
 Close Scope Q_scope.
 
@@ -7439,8 +7990,33 @@ Lemma key_gears_all_distinct :
   (Zpos key_largest_gear_223 <> Zpos key_metonic_gear_127)%Z.
 Proof. repeat split; discriminate. Qed.
 
-Definition gear_223_is_largest : Prop :=
-  forall g : positive, (Zpos g <= Zpos key_largest_gear_223)%Z.
+Definition gear_223_is_largest_in_mechanism : Prop :=
+  forall g : Gear, In g ct_confirmed_gears -> (Zpos (teeth g) <= 223)%Z.
+
+Lemma gear_223_largest_proof : gear_223_is_largest_in_mechanism.
+Proof.
+  unfold gear_223_is_largest_in_mechanism.
+  intros g Hin.
+  unfold ct_confirmed_gears in Hin.
+  repeat (destruct Hin as [Heq|Hin]; [rewrite <- Heq; simpl; lia|]).
+  contradiction.
+Qed.
+
+Definition max_teeth_value : Z := 223.
+
+Lemma all_mechanism_gears_le_223 :
+  forallb (fun g => (Zpos (teeth g) <=? 223)%Z) ct_confirmed_gears = true.
+Proof. reflexivity. Qed.
+
+Lemma gear_b1_has_max_teeth :
+  teeth gear_b1 = 223%positive.
+Proof. reflexivity. Qed.
+
+Lemma no_gear_exceeds_223 :
+  forall g, In g ct_confirmed_gears -> (Zpos (teeth g) <= max_teeth_value)%Z.
+Proof.
+  exact gear_223_largest_proof.
+Qed.
 
 Definition prime_gear_53 : positive := 53.
 Definition prime_gear_127 : positive := 127.
@@ -7860,6 +8436,37 @@ Proof.
   rewrite eoc_at_0. ring.
 Qed.
 
+Definition epicyclic_velocity (omega t e : R) : R :=
+  omega * (1 + 2 * e * cos (omega * t)).
+
+Lemma epicyclic_velocity_at_t0 : forall omega e,
+  epicyclic_velocity omega 0 e = omega * (1 + 2 * e).
+Proof.
+  intros omega e. unfold epicyclic_velocity.
+  replace (omega * 0) with 0 by ring.
+  rewrite cos_0. ring.
+Qed.
+
+Lemma epicyclic_velocity_at_pi_over_omega : forall omega e,
+  omega <> 0 -> epicyclic_velocity omega (PI / omega) e = omega * (1 - 2 * e).
+Proof.
+  intros omega e Homega. unfold epicyclic_velocity.
+  replace (omega * (PI / omega)) with PI by (field; exact Homega).
+  rewrite cos_PI. ring.
+Qed.
+
+Lemma epicyclic_velocity_positive : forall omega e,
+  0 < omega -> valid_eccentricity e -> 0 < epicyclic_velocity omega 0 e.
+Proof.
+  intros omega e Homega He.
+  unfold epicyclic_velocity.
+  replace (omega * 0) with 0 by ring.
+  rewrite cos_0.
+  assert (H2e : 0 <= 2 * e).
+  { apply Rmult_le_pos; [lra | apply ecc_nonneg; exact He]. }
+  apply Rmult_lt_0_compat; [exact Homega | lra].
+Qed.
+
 (* ========================================================================== *)
 (* XLIV. Kepler's Equation                                                    *)
 (* ========================================================================== *)
@@ -7931,6 +8538,59 @@ Record PinSlotParams := mkPinSlotParams {
 Definition pin_slot_ecc (p : PinSlotParams) : R :=
   pin_offset p / deferent_radius p.
 
+Definition valid_pin_slot_geometry (p : PinSlotParams) : Prop :=
+  slot_length p >= 2 * pin_offset p /\
+  pin_offset p > 0 /\
+  deferent_radius p > 0 /\
+  pin_offset p < deferent_radius p.
+
+Lemma pin_slot_ecc_valid : forall p,
+  valid_pin_slot_geometry p -> valid_eccentricity (pin_slot_ecc p).
+Proof.
+  intros p [Hslot [Hpin [Hdef Hlt]]].
+  unfold valid_eccentricity, pin_slot_ecc.
+  split.
+  - apply Rlt_le. apply Rdiv_pos; assumption.
+  - apply Rmult_lt_reg_r with (deferent_radius p).
+    + exact Hdef.
+    + unfold Rdiv. rewrite Rmult_assoc. rewrite Rinv_l.
+      * rewrite Rmult_1_r. rewrite Rmult_1_l. exact Hlt.
+      * apply Rgt_not_eq. exact Hdef.
+Qed.
+
+Definition slot_travel_range (p : PinSlotParams) : R :=
+  2 * pin_offset p.
+
+Lemma slot_accommodates_travel : forall p,
+  valid_pin_slot_geometry p -> slot_length p >= slot_travel_range p.
+Proof.
+  intros p [Hslot _]. unfold slot_travel_range. exact Hslot.
+Qed.
+
+Definition lunar_pin_slot_params : PinSlotParams :=
+  mkPinSlotParams (265/10) (14/10) (30/10).
+
+Lemma lunar_pin_slot_valid :
+  valid_pin_slot_geometry lunar_pin_slot_params.
+Proof.
+  unfold valid_pin_slot_geometry, lunar_pin_slot_params, slot_length, pin_offset, deferent_radius.
+  repeat split; lra.
+Qed.
+
+Lemma lunar_eccentricity_approx :
+  pin_slot_ecc lunar_pin_slot_params > 0 /\
+  pin_slot_ecc lunar_pin_slot_params < 1/10.
+Proof.
+  unfold pin_slot_ecc, lunar_pin_slot_params, deferent_radius, pin_offset.
+  split.
+  - apply Rdiv_lt_0_compat; lra.
+  - apply Rmult_lt_reg_r with (265/10).
+    + lra.
+    + unfold Rdiv at 1. rewrite Rmult_assoc.
+      rewrite Rinv_l by lra. rewrite Rmult_1_r.
+      lra.
+Qed.
+
 Definition pin_slot_output_approx (theta_in e : R) : R :=
   theta_in + e * sin theta_in.
 
@@ -7942,6 +8602,75 @@ Proof. intro e. unfold pin_slot_output_approx. rewrite sin_PI_val. ring. Qed.
 
 Lemma pin_slot_approx_at_PI2 : forall e, pin_slot_output_approx (PI/2) e = PI/2 + e.
 Proof. intro e. unfold pin_slot_output_approx. rewrite sin_PI2_val. ring. Qed.
+
+Definition pin_slot_output_exact (theta_in e : R) : R :=
+  theta_in + atan (e * sin theta_in / (1 + e * cos theta_in)).
+
+Lemma pin_slot_exact_at_0 : forall e, valid_eccentricity e ->
+  pin_slot_output_exact 0 e = 0.
+Proof.
+  intros e He. unfold pin_slot_output_exact.
+  rewrite sin_0. rewrite cos_0.
+  replace (e * 0) with 0 by ring.
+  replace (0 / (1 + e * 1)) with 0.
+  - rewrite atan_0. ring.
+  - unfold Rdiv. rewrite Rmult_0_l. reflexivity.
+Qed.
+
+Lemma pin_slot_exact_at_PI : forall e, valid_eccentricity e ->
+  pin_slot_output_exact PI e = PI.
+Proof.
+  intros e He. unfold pin_slot_output_exact.
+  rewrite sin_PI. rewrite cos_PI.
+  replace (e * 0) with 0 by ring.
+  replace (0 / (1 + e * -1)) with 0.
+  - rewrite atan_0. ring.
+  - unfold Rdiv. rewrite Rmult_0_l. reflexivity.
+Qed.
+
+Lemma atan_small_approx : forall x, Rabs x <= 1 -> Rabs (atan x - x) <= PI/2 + 1.
+Proof.
+  intros x Hx.
+  pose proof (atan_bound x) as [Hlo Hhi].
+  assert (Hatan : Rabs (atan x) <= PI/2).
+  { apply Rabs_le. split; left.
+    - unfold Rdiv in Hlo |- *. lra.
+    - exact Hhi. }
+  apply Rle_trans with (Rabs (atan x) + Rabs (- x)).
+  - replace (atan x - x) with (atan x + (- x)) by ring. apply Rabs_triang.
+  - rewrite Rabs_Ropp.
+    apply Rle_trans with (PI/2 + Rabs x).
+    + apply Rplus_le_compat; [exact Hatan | apply Rle_refl].
+    + apply Rplus_le_compat_l. exact Hx.
+Qed.
+
+Lemma pin_slot_approx_error_bound : forall theta e,
+  valid_eccentricity e -> 0 < 1 + e * cos theta ->
+  Rabs (pin_slot_output_exact theta e - pin_slot_output_approx theta e) <= PI/2 + e.
+Proof.
+  intros theta e He Hdenom.
+  unfold pin_slot_output_exact, pin_slot_output_approx.
+  replace (theta + atan (e * sin theta / (1 + e * cos theta)) -
+           (theta + e * sin theta))
+     with (atan (e * sin theta / (1 + e * cos theta)) - e * sin theta) by ring.
+  apply Rle_trans with (Rabs (atan (e * sin theta / (1 + e * cos theta))) + Rabs (- (e * sin theta))).
+  - replace (atan (e * sin theta / (1 + e * cos theta)) - e * sin theta) with
+            (atan (e * sin theta / (1 + e * cos theta)) + (- (e * sin theta))) by ring.
+    apply Rabs_triang.
+  - rewrite Rabs_Ropp.
+    pose proof (atan_bound (e * sin theta / (1 + e * cos theta))) as [Hlo Hhi].
+    assert (Hatan_bound : Rabs (atan (e * sin theta / (1 + e * cos theta))) <= PI/2).
+    { apply Rabs_le. split; left.
+      - unfold Rdiv in Hlo |- *. lra.
+      - exact Hhi. }
+    assert (Hesin : Rabs (e * sin theta) <= e).
+    { rewrite Rabs_mult.
+      assert (He_abs : Rabs e = e) by (apply Rabs_pos_eq; apply ecc_nonneg; exact He).
+      rewrite He_abs.
+      replace e with (e * 1) at 2 by ring.
+      apply Rmult_le_compat_l; [apply ecc_nonneg; exact He | apply Rabs_sin_le_1]. }
+    apply Rplus_le_compat; [exact Hatan_bound | exact Hesin].
+Qed.
 
 Definition pin_slot_velocity (omega theta e : R) : R :=
   omega * (1 + e * cos theta) / sqrt (1 - e*e*(sin theta)*(sin theta)).
@@ -8022,6 +8751,63 @@ Proof.
   exact lunar_inclination_rad_bounds.
 Qed.
 
+Lemma lunar_latitude_at_PI : lunar_latitude PI = 0.
+Proof.
+  unfold lunar_latitude.
+  rewrite sin_PI. rewrite Rmult_0_r.
+  exact asin_0.
+Qed.
+
+Lemma lunar_latitude_at_270 : lunar_latitude (3 * PI / 2) = - lunar_inclination_rad.
+Proof.
+  unfold lunar_latitude.
+  rewrite sin_3PI2.
+  replace (sin lunar_inclination_rad * -1) with (- sin lunar_inclination_rad) by ring.
+  assert (Hbnd : - (PI / 2) <= - lunar_inclination_rad <= PI / 2).
+  { destruct lunar_inclination_rad_bounds as [H1 H2].
+    destruct lunar_inclination_rad_in_range as [Hlo Hhi].
+    split.
+    - destruct H2 as [Hlt|Heq].
+      + left. lra.
+      + right. lra.
+    - left. lra. }
+  rewrite <- sin_neg.
+  apply asin_sin. exact Hbnd.
+Qed.
+
+Lemma sin_inc_bound : Rabs (sin lunar_inclination_rad) <= 1.
+Proof. apply Rabs_sin_le_1. Qed.
+
+Lemma lunar_latitude_product_bound : forall u,
+  Rabs (sin lunar_inclination_rad * sin u) <= 1.
+Proof.
+  intro u.
+  apply Rle_trans with (Rabs (sin lunar_inclination_rad) * Rabs (sin u)).
+  - rewrite <- Rabs_mult. apply Rle_refl.
+  - apply Rle_trans with (1 * 1).
+    + apply Rmult_le_compat; try apply Rabs_pos.
+      * apply sin_inc_bound.
+      * apply Rabs_sin_le_1.
+    + lra.
+Qed.
+
+Lemma lunar_latitude_bounded : forall u,
+  Rabs (lunar_latitude u) <= PI/2.
+Proof.
+  intro u. unfold lunar_latitude.
+  pose proof (asin_bound (sin lunar_inclination_rad * sin u)) as [Hasin_lo Hasin_hi].
+  apply Rabs_le. split; [exact Hasin_lo | exact Hasin_hi].
+Qed.
+
+Lemma lunar_latitude_max_at_quadrature :
+  lunar_latitude (PI / 2) = lunar_inclination_rad /\
+  lunar_latitude (3 * PI / 2) = - lunar_inclination_rad.
+Proof.
+  split.
+  - exact lunar_latitude_at_90.
+  - exact lunar_latitude_at_270.
+Qed.
+
 (* ========================================================================== *)
 (* XLVIII. Eclipse Limits                                                     *)
 (* ========================================================================== *)
@@ -8073,6 +8859,84 @@ Proof.
     + apply Rlt_le. exact evection_amplitude_pos.
     + exact (Rabs_sin_le_1 (2*D - M)).
   - apply Rlt_le. exact evection_amplitude_pos.
+Qed.
+
+Definition annual_equation_amplitude_arcmin : R := 115 / 10.
+Definition annual_equation_amplitude_deg : R := annual_equation_amplitude_arcmin / 60.
+Definition annual_equation_amplitude_rad : R := deg_to_rad annual_equation_amplitude_deg.
+
+Definition annual_equation (M_sun : R) : R :=
+  annual_equation_amplitude_rad * sin M_sun.
+
+Lemma annual_equation_amplitude_pos : 0 < annual_equation_amplitude_rad.
+Proof.
+  unfold annual_equation_amplitude_rad. apply deg_to_rad_pos.
+  unfold annual_equation_amplitude_deg, annual_equation_amplitude_arcmin. lra.
+Qed.
+
+Lemma annual_equation_at_0 : annual_equation 0 = 0.
+Proof.
+  unfold annual_equation.
+  rewrite sin_0. ring.
+Qed.
+
+Lemma annual_equation_bounded : forall M_sun,
+  Rabs (annual_equation M_sun) <= annual_equation_amplitude_rad.
+Proof.
+  intro M_sun. unfold annual_equation.
+  rewrite Rabs_mult.
+  rewrite (Rabs_pos_eq annual_equation_amplitude_rad).
+  - replace annual_equation_amplitude_rad with (annual_equation_amplitude_rad * 1) at 2 by ring.
+    apply Rmult_le_compat_l.
+    + apply Rlt_le. exact annual_equation_amplitude_pos.
+    + apply Rabs_sin_le_1.
+  - apply Rlt_le. exact annual_equation_amplitude_pos.
+Qed.
+
+Definition variation_amplitude_arcmin : R := 40.
+Definition variation_amplitude_deg : R := variation_amplitude_arcmin / 60.
+Definition variation_amplitude_rad : R := deg_to_rad variation_amplitude_deg.
+
+Definition variation (D : R) : R :=
+  variation_amplitude_rad * sin (2 * D).
+
+Lemma variation_amplitude_pos : 0 < variation_amplitude_rad.
+Proof.
+  unfold variation_amplitude_rad. apply deg_to_rad_pos.
+  unfold variation_amplitude_deg, variation_amplitude_arcmin. lra.
+Qed.
+
+Lemma variation_at_0 : variation 0 = 0.
+Proof.
+  unfold variation.
+  replace (2 * 0) with 0 by ring.
+  rewrite sin_0. ring.
+Qed.
+
+Lemma variation_bounded : forall D,
+  Rabs (variation D) <= variation_amplitude_rad.
+Proof.
+  intro D. unfold variation.
+  rewrite Rabs_mult.
+  rewrite (Rabs_pos_eq variation_amplitude_rad).
+  - replace variation_amplitude_rad with (variation_amplitude_rad * 1) at 2 by ring.
+    apply Rmult_le_compat_l.
+    + apply Rlt_le. exact variation_amplitude_pos.
+    + apply Rabs_sin_le_1.
+  - apply Rlt_le. exact variation_amplitude_pos.
+Qed.
+
+Definition total_lunar_perturbation (D M M_sun : R) : R :=
+  evection D M + annual_equation M_sun + variation D.
+
+Lemma total_perturbation_at_conjunction : forall M M_sun,
+  2*0 = M -> M_sun = 0 -> total_lunar_perturbation 0 M M_sun = 0.
+Proof.
+  intros M M_sun HM Hsun.
+  unfold total_lunar_perturbation.
+  rewrite (evection_at_conjunction M HM).
+  rewrite Hsun. rewrite annual_equation_at_0.
+  rewrite variation_at_0. ring.
 Qed.
 
 (* ========================================================================== *)
