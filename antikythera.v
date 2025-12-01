@@ -733,7 +733,7 @@ Proof.
 Qed.
 
 (* ========================================================================== *)
-(* Gap 1 Fix: Gear Mesh Dynamics                                              *)
+(* XII. Gear Mesh Dynamics                                                    *)
 (* ========================================================================== *)
 
 Definition pressure_angle_deg : Q := 20 # 1.
@@ -1156,7 +1156,7 @@ Qed.
 Close Scope R_scope.
 
 (* ========================================================================== *)
-(* Gap 2 Fix: Differential Gear Mathematics                                   *)
+(* XIII. Differential Gear Mathematics                                        *)
 (* ========================================================================== *)
 
 Definition sun_gear_teeth : positive := 32.
@@ -1183,7 +1183,7 @@ Definition willis_equation (omega_sun omega_ring omega_carrier : Q) (ring sun : 
   Qeq (omega_sun - omega_carrier) (Qmult (Zpos ring # sun) (omega_carrier - omega_ring)).
 
 (* ========================================================================== *)
-(* Gap 3 Fix: Coaxial Shaft Constraints                                       *)
+(* XIV. Coaxial Shaft Constraints                                             *)
 (* ========================================================================== *)
 
 Definition coaxial_same_angular_velocity (g1 g2 : Gear) (arbor : Arbor) : Prop :=
@@ -1197,7 +1197,7 @@ Proof.
 Qed.
 
 (* ========================================================================== *)
-(* Gap 4 Fix: Bearing Load Distribution                                       *)
+(* XV. Bearing Load Distribution                                              *)
 (* ========================================================================== *)
 (*                                                                            *)
 (* Ancient Greeks used olive oil and plant-based lubricants for bronze        *)
@@ -1251,7 +1251,7 @@ Lemma bearing_clearance_positive : Qlt (0 # 1) journal_bearing_clearance_mm.
 Proof. unfold journal_bearing_clearance_mm, Qlt. simpl. lia. Qed.
 
 (* ========================================================================== *)
-(* Gap 5 Fix: Gear Train Inertia                                              *)
+(* XVI. Gear Train Inertia                                                    *)
 (* ========================================================================== *)
 
 Definition gear_moment_of_inertia (teeth : positive) (module_mm : Q) : Q :=
@@ -4995,7 +4995,7 @@ Definition mechanism_3d_kinematics_verified : Prop :=
   connects_2d_3d_models /\
   pin_slot_models_eccentric_anomaly.
 
-Theorem gap1_3d_kinematics_complete : mechanism_3d_kinematics_verified.
+Theorem kinematics_3d_complete : mechanism_3d_kinematics_verified.
 Proof.
   unfold mechanism_3d_kinematics_verified.
   split. { exact antikythera_3d_valid. }
@@ -5559,7 +5559,7 @@ Lemma intercalation_algebraic :
 Proof. reflexivity. Qed.
 
 (* ========================================================================== *)
-(* Gap 12 Fix: Intercalary Month Algorithm Optimality                         *)
+(* XXII. Intercalary Month Optimality                                         *)
 (* ========================================================================== *)
 
 Definition max_gap_between_intercalary : Z := 3%Z.
@@ -5623,7 +5623,7 @@ Proof.
 Qed.
 
 (* ========================================================================== *)
-(* Gap 13 Fix: Egyptian Calendar Drift                                        *)
+(* XXIII. Egyptian Calendar Drift                                             *)
 (* ========================================================================== *)
 
 Definition egyptian_year_days : Z := 365%Z.
@@ -5668,7 +5668,7 @@ Proof.
 Qed.
 
 (* ========================================================================== *)
-(* Gap 14 Fix: Corinthian vs Attic Calendar                                   *)
+(* XXIV. Corinthian vs Attic Calendar                                         *)
 (* ========================================================================== *)
 
 Inductive GreekCalendarType : Set :=
@@ -5700,7 +5700,7 @@ Lemma corinthian_confirmed : mechanism_uses_corinthian.
 Proof. reflexivity. Qed.
 
 (* ========================================================================== *)
-(* Gap 15 Fix: Parapegma Latitude Sensitivity                                 *)
+(* XXV. Parapegma Latitude Sensitivity                                        *)
 (* ========================================================================== *)
 
 Definition parapegma_latitude_deg : Q := 365 # 10.
@@ -5740,7 +5740,7 @@ Qed.
 Definition parapegma_calibrated_for_latitude : Q := 37 # 1.
 
 (* ========================================================================== *)
-(* Gap 18 Fix: Factor 17 Uniqueness                                           *)
+(* XXVI. Factor 17 Uniqueness                                                 *)
 (* ========================================================================== *)
 
 Definition venus_numerator : Z := 289%Z.
@@ -5789,7 +5789,7 @@ Proof.
 Qed.
 
 (* ========================================================================== *)
-(* Gap 19 Fix: 3D Spatial Packing Constraints                                 *)
+(* XXVII. 3D Spatial Packing Constraints                                      *)
 (* ========================================================================== *)
 
 Definition mechanism_depth_mm_spec : Q := 45 # 1.
@@ -5869,28 +5869,28 @@ Proof.
 Qed.
 
 (* ========================================================================== *)
-(* Gap 20 Fix: Lost Gears Bayesian Uncertainty                                *)
+(* XXVIII. Lost Gears Bayesian Uncertainty                                    *)
 (* ========================================================================== *)
 
-Definition ct_confirmed_count_gap20 : Z := 30%Z.
-Definition hypothetical_count_gap20 : Z := 39%Z.
-Definition total_count_gap20 : Z := 69%Z.
+Definition ct_confirmed_count : Z := 30%Z.
+Definition hypothetical_count : Z := 39%Z.
+Definition total_gear_count : Z := 69%Z.
 
-Lemma gear_count_sum_gap20 :
-  (ct_confirmed_count_gap20 + hypothetical_count_gap20 = total_count_gap20)%Z.
+Lemma gear_count_sum :
+  (ct_confirmed_count + hypothetical_count = total_gear_count)%Z.
 Proof. reflexivity. Qed.
 
-Definition hypothetical_confidence_gap20 : Q := 7 # 10.
+Definition hypothetical_confidence : Q := 7 # 10.
 
-Definition gear_probability_gap20 (confirmed : bool) : Q :=
-  if confirmed then (1 # 1) else hypothetical_confidence_gap20.
+Definition gear_probability (confirmed : bool) : Q :=
+  if confirmed then (1 # 1) else hypothetical_confidence.
 
-Lemma confirmed_certain_gap20 :
-  Qeq (gear_probability_gap20 true) (1 # 1).
+Lemma confirmed_certain :
+  Qeq (gear_probability true) (1 # 1).
 Proof. reflexivity. Qed.
 
-Definition reconstruction_conf_gap20 : Q :=
-  Qmult (1 # 1) (Qpower hypothetical_confidence_gap20 39).
+Definition reconstruction_confidence : Q :=
+  Qmult (1 # 1) (Qpower hypothetical_confidence 39).
 
 (* Egyptian calendar has 365 holes (360 + 5 epagomenal). *)
 Definition egyptian_calendar_holes : positive := 365.
@@ -9408,7 +9408,7 @@ Lemma far_from_node_no_eclipse :
 Proof. reflexivity. Qed.
 
 (* ========================================================================== *)
-(* XXIII-A. Complete Dragon Hand Gear Train (Gap 9 Fix)                       *)
+(* XXIII-A. Complete Dragon Hand Gear Train                                   *)
 (* ========================================================================== *)
 (*                                                                            *)
 (* The lunar node regression gear train drives the hypothetical "Dragon Hand" *)
@@ -9613,7 +9613,7 @@ Lemma precession_directions_opposite :
 Proof. reflexivity. Qed.
 
 (* ========================================================================== *)
-(* XXIII-B. Fragment D 63-Tooth Gear Assignment Exclusion (Gap 12 Fix)        *)
+(* XXIII-B. Fragment D 63-Tooth Gear Assignment Exclusion                     *)
 (* ========================================================================== *)
 (*                                                                            *)
 (* Fragment D contains exactly one CT-confirmed gear: 63 teeth.               *)
@@ -11362,7 +11362,7 @@ Lemma prime_gear_223_coprime_2_3 : (Z.gcd 223 2 = 1)%Z /\ (Z.gcd 223 3 = 1)%Z.
 Proof. split; reflexivity. Qed.
 
 (* ========================================================================== *)
-(* XXXV-A. Combinatorial Uniqueness of 69-Gear Reconstruction (Gap 11 Fix)    *)
+(* XXXV-A. Combinatorial Uniqueness of 69-Gear Reconstruction                 *)
 (* ========================================================================== *)
 (*                                                                            *)
 (* The Freeth 2021 reconstruction achieves 69 gears through shared factors.   *)
@@ -11648,10 +11648,7 @@ Proof.
 Qed.
 
 (* ========================================================================== *)
-(* PART VII: GAP CLOSURE                                                      *)
-(* ========================================================================== *)
-(* This section addresses 30 identified gaps in the formalization with        *)
-(* rigorous proofs built on a foundation of helper lemmas.                    *)
+(* PART VII: SUPPLEMENTARY MODELS                                             *)
 (* ========================================================================== *)
 
 (* ========================================================================== *)
@@ -12622,7 +12619,7 @@ Proof.
 Qed.
 
 (* ========================================================================== *)
-(* XLIX-B. Second Lunar Inequality Impossibility Proof (Gap 6 Fix)            *)
+(* XLIX-B. Second Lunar Inequality Impossibility Proof                        *)
 (* ========================================================================== *)
 (*                                                                            *)
 (* We prove the pin-slot mechanism CANNOT generate the evection term without  *)
@@ -12738,7 +12735,7 @@ Lemma saturn_ecc_valid : valid_eccentricity saturn_eccentricity.
 Proof. unfold valid_eccentricity, saturn_eccentricity. lra. Qed.
 
 (* ========================================================================== *)
-(* LI-A. Planetary Orbital Inclinations (Gap 7 Fix)                           *)
+(* LI-A. Planetary Orbital Inclinations                                       *)
 (* ========================================================================== *)
 (*                                                                            *)
 (* The Antikythera mechanism displays planetary LONGITUDE only (position in   *)
@@ -12806,7 +12803,7 @@ Definition latitude_not_computed_by_mechanism : Prop :=
   gear_count_for_latitude = 0%Z.
 
 (* ========================================================================== *)
-(* LI-B. Solar True Anomaly Gear Train (Gap 8 Fix)                            *)
+(* LI-B. Solar True Anomaly Gear Train                                        *)
 (* ========================================================================== *)
 (*                                                                            *)
 (* The Sun's position varies from mean motion due to Earth's orbital          *)
@@ -12896,7 +12893,7 @@ Definition evans_carman_alternative : Prop :=
 Definition two_solar_models_exist : Prop :=
   wright_solar_anomaly_model /\ evans_carman_alternative.
 
-Theorem gap8_solar_models_documented : two_solar_models_exist.
+Theorem solar_models_documented : two_solar_models_exist.
 Proof.
   split.
   - exact wright_model_valid.
@@ -12943,7 +12940,7 @@ Lemma factor_442 : (442 = 2 * 13 * 17)%Z.
 Proof. reflexivity. Qed.
 
 (* ========================================================================== *)
-(* LII-A. Mercury and Mars Period Derivation (Gap 13-14 Fix)                  *)
+(* LII-A. Mercury and Mars Period Derivation                                  *)
 (* ========================================================================== *)
 (*                                                                            *)
 (* Mercury (1513, 480):                                                       *)
@@ -13016,7 +13013,7 @@ Proof. unfold period_factorizable, largest_prime_factor_bound, max_manufacturabl
 Lemma mars_284_factor_71_fits : mars_284_largest_prime_71.
 Proof. unfold mars_284_largest_prime_71. lia. Qed.
 
-Theorem gap13_14_period_derivations : parmenides_method_constraints.
+Theorem planetary_period_derivations : parmenides_method_constraints.
 Proof.
   unfold parmenides_method_constraints.
   split. { reflexivity. }
@@ -14179,7 +14176,7 @@ Proof.
 Qed.
 
 (* ========================================================================== *)
-(* Gap 10 Fix: Lunar Distance/Apparent Size                                   *)
+(* LXVII-A. Lunar Distance and Apparent Size                                  *)
 (* ========================================================================== *)
 
 Definition lunar_mean_distance_km : R := 384400.
@@ -14265,7 +14262,7 @@ Definition distance_affects_eclipse_type : Prop :=
   mechanism_ignores_lunar_distance /\
   perigee_umbra_diameter > apogee_umbra_diameter.
 
-Theorem gap10_distance_effects_proven : distance_affects_eclipse_type.
+Theorem distance_effects_proven : distance_affects_eclipse_type.
 Proof.
   unfold distance_affects_eclipse_type.
   split.
@@ -14274,7 +14271,7 @@ Proof.
 Qed.
 
 (* ========================================================================== *)
-(* Gap 11 Fix: Eclipse Umbra/Penumbra Types                                   *)
+(* LXVII-B. Eclipse Umbra/Penumbra Types                                      *)
 (* ========================================================================== *)
 
 Inductive DetailedEclipseType : Set :=
@@ -14383,7 +14380,7 @@ Lemma kepler_iterate_S : forall M e n,
   kepler_iterate M e (S n) = kepler_newton_step M e (kepler_iterate M e n).
 Proof. intros. reflexivity. Qed.
 
-(* Gap 21 Fix: Kepler Equation Convergence Proof *)
+(* LXVIII-A. Kepler Equation Convergence Proof *)
 Definition kepler_contraction_factor (e : R) : R := e.
 
 Lemma kepler_contraction_bound : forall e,
@@ -14423,7 +14420,7 @@ Proof.
 Qed.
 
 (* ========================================================================== *)
-(* Gap 23 Fix: Kepler Convergence Iteration Bound                             *)
+(* LXVIII-B. Kepler Convergence Iteration Bound                               *)
 (* ========================================================================== *)
 (*                                                                            *)
 (* For Newton's method on the Kepler equation E - e*sin(E) = M:               *)
@@ -15592,7 +15589,7 @@ Definition rss_vs_worst_case_ratio (n : nat) : R :=
 Close Scope R_scope.
 
 (* ========================================================================== *)
-(* Gap 22 Fix: Pin-Slot Output Exact Form                                     *)
+(* XC-A. Pin-Slot Output Exact Form                                           *)
 (* ========================================================================== *)
 (*                                                                            *)
 (* The pin-slot mechanism produces output:                                    *)
@@ -15995,7 +15992,7 @@ Qed.
 Close Scope R_scope.
 
 (* ========================================================================== *)
-(* Gap 23 Fix: Calendar Cycle LCM vs Dial Moduli LCM                          *)
+(* XC-B. Calendar Cycle LCM vs Dial Moduli LCM                                *)
 (* ========================================================================== *)
 (*                                                                            *)
 (* There are TWO distinct LCM computations for the mechanism:                 *)
@@ -16064,7 +16061,7 @@ Lemma factor_114_decomposition : (114 = 2 * 3 * 19)%Z.
 Proof. reflexivity. Qed.
 
 (* ========================================================================== *)
-(* Gap 24 Fix: State Machine Reachability for All Dials                       *)
+(* XC-C. State Machine Reachability for All Dials                             *)
 (* ========================================================================== *)
 (*                                                                            *)
 (* We prove that every valid dial state is reachable from the initial state   *)
@@ -16076,7 +16073,7 @@ Proof. reflexivity. Qed.
 Definition state_reachable (initial target : MechanismState) : Prop :=
   exists n : nat, step_n n initial = target.
 
-Definition valid_dial_state_gap24 (s : MechanismState) : Prop :=
+Definition valid_dial_state (s : MechanismState) : Prop :=
   (0 <= metonic_dial s < metonic_modulus)%Z /\
   (0 <= saros_dial s < saros_modulus)%Z /\
   (0 <= callippic_dial s < callippic_modulus)%Z /\
@@ -16155,7 +16152,7 @@ Proof.
 Qed.
 
 (* ========================================================================== *)
-(* Gap 25 Fix: Error Accumulation Over Time                                   *)
+(* XC-D. Error Accumulation Over Time                                         *)
 (* ========================================================================== *)
 
 Open Scope R_scope.
@@ -16182,7 +16179,7 @@ Qed.
 Close Scope R_scope.
 
 (* ========================================================================== *)
-(* Gap 26 Fix: FCI Text Reconstruction Uncertainty                            *)
+(* XC-E. FCI Text Reconstruction Uncertainty                                  *)
 (* ========================================================================== *)
 
 Definition fci_characters_legible : Z := 3400%Z.
@@ -16195,7 +16192,7 @@ Proof. unfold fci_characters_legible, fci_characters_uncertain. lia. Qed.
 Definition period_relation_confidence : Q := 95 # 100.
 
 (* ========================================================================== *)
-(* Gap 27 Fix: BCI Cosmos Description                                         *)
+(* XC-F. BCI Cosmos Description                                               *)
 (* ========================================================================== *)
 
 Definition cosmos_display_elements : list string :=
@@ -16212,20 +16209,20 @@ Lemma cosmos_has_7_wanderers :
 Proof. reflexivity. Qed.
 
 (* ========================================================================== *)
-(* Gap 28 Fix: Index Letter Semantics                                         *)
+(* XC-G. Index Letter Semantics                                               *)
 (* ========================================================================== *)
 
-Definition eclipse_index_glyphs_gap28 : Z := 51%Z.
-Definition saros_cells_gap28 : Z := 38%Z.
+Definition eclipse_index_glyphs : Z := 51%Z.
+Definition saros_cells : Z := 38%Z.
 
 Definition index_letter_to_cell_mapping : Prop :=
-  (eclipse_index_glyphs_gap28 > saros_cells_gap28)%Z.
+  (eclipse_index_glyphs > saros_cells)%Z.
 
 Lemma more_glyphs_than_cells : index_letter_to_cell_mapping.
-Proof. unfold index_letter_to_cell_mapping, eclipse_index_glyphs_gap28, saros_cells_gap28. lia. Qed.
+Proof. unfold index_letter_to_cell_mapping, eclipse_index_glyphs, saros_cells. lia. Qed.
 
 (* ========================================================================== *)
-(* Gap 29 Fix: Babylonian Source Data                                         *)
+(* XC-H. Babylonian Source Data                                               *)
 (* ========================================================================== *)
 
 Definition babylonian_metonic_relation : Q := 235 # 19.
@@ -16255,7 +16252,7 @@ Lemma planetary_babylon_verified : planetary_periods_from_babylon.
 Proof. reflexivity. Qed.
 
 (* ========================================================================== *)
-(* Gap 30 Fix: Ptolemaic Theory Comparison                                    *)
+(* XC-I. Ptolemaic Theory Comparison                                          *)
 (* ========================================================================== *)
 
 Definition hipparchus_epoch_year : Z := (-126)%Z.
@@ -16288,7 +16285,7 @@ Proof.
   - exact mechanism_predates_ptolemy_verified.
 Qed.
 
-Theorem gap_fixes_complete :
+Theorem formalization_complete :
   factor_17_shared /\
   mechanism_uses_corinthian /\
   all_dials_independently_reachable /\
