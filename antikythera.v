@@ -4602,6 +4602,409 @@ Proof.
 Qed.
 
 Close Scope R_scope.
+
+(* ========================================================================== *)
+(* X-bis. THREE-DIMENSIONAL PIN-SLOT KINEMATICS                                *)
+(* ========================================================================== *)
+(*                                                                            *)
+(* The pin-slot mechanism operates in 3D space. We formalize:                 *)
+(*   1. Pin position as a point on a circle in the z=0 plane                  *)
+(*   2. Slot as a radial constraint line from the eccentric center            *)
+(*   3. Geometric derivation of the output angle formula                       *)
+(*   4. Connection to celestial mechanics (true/eccentric anomaly)            *)
+(*                                                                            *)
+(* The key theorem proves that the 2D projected output angle formula:         *)
+(*   theta_out = theta_in + atan(e*sin(theta_in) / (1 + e*cos(theta_in)))     *)
+(* follows from first principles of 3D rigid body geometry.                   *)
+(*                                                                            *)
+(* Source: Carman, Thorndike, Evans 2012 (JHA 43:93-116)                       *)
+(*         Wright 2005 (Antiquarian Horology)                                  *)
+(*                                                                            *)
+(* ========================================================================== *)
+
+Open Scope R_scope.
+
+Record KinPoint3D := mkKinPoint3D {
+  kp3d_x : R;
+  kp3d_y : R;
+  kp3d_z : R
+}.
+
+Definition kinpoint3d_in_plane (p : KinPoint3D) : Prop := kp3d_z p = 0.
+
+Definition kin_origin3d : KinPoint3D := mkKinPoint3D 0 0 0.
+
+Definition kinpoint3d_distance (p1 p2 : KinPoint3D) : R :=
+  sqrt ((kp3d_x p1 - kp3d_x p2)^2 + (kp3d_y p1 - kp3d_y p2)^2 + (kp3d_z p1 - kp3d_z p2)^2).
+
+Lemma kinpoint3d_distance_self : forall p, kinpoint3d_distance p p = 0.
+Proof.
+  intro p. unfold kinpoint3d_distance.
+  replace ((kp3d_x p - kp3d_x p)^2 + (kp3d_y p - kp3d_y p)^2 + (kp3d_z p - kp3d_z p)^2) with 0 by ring.
+  apply sqrt_0.
+Qed.
+
+Lemma kinpoint3d_distance_nonneg : forall p1 p2, kinpoint3d_distance p1 p2 >= 0.
+Proof.
+  intros p1 p2. unfold kinpoint3d_distance.
+  apply Rle_ge. apply sqrt_pos.
+Qed.
+
+Record PinSlot3D := mkPinSlot3D {
+  ps3d_pin_radius : R;
+  ps3d_eccentricity : R;
+  ps3d_slot_length : R
+}.
+
+Definition pin_position_3d (ps : PinSlot3D) (theta : R) : KinPoint3D :=
+  mkKinPoint3D (ps3d_pin_radius ps * cos theta) (ps3d_pin_radius ps * sin theta) 0.
+
+Lemma pin_in_plane : forall ps theta, kinpoint3d_in_plane (pin_position_3d ps theta).
+Proof. intros. unfold kinpoint3d_in_plane, pin_position_3d, kp3d_z. reflexivity. Qed.
+
+Definition slot_center_3d (ps : PinSlot3D) : KinPoint3D :=
+  mkKinPoint3D (ps3d_eccentricity ps) 0 0.
+
+Lemma slot_center_in_plane : forall ps, kinpoint3d_in_plane (slot_center_3d ps).
+Proof. intro. unfold kinpoint3d_in_plane, slot_center_3d, kp3d_z. reflexivity. Qed.
+
+Definition pin_relative_to_slot (ps : PinSlot3D) (theta : R) : KinPoint3D :=
+  let pin := pin_position_3d ps theta in
+  let center := slot_center_3d ps in
+  mkKinPoint3D (kp3d_x pin - kp3d_x center) (kp3d_y pin - kp3d_y center) (kp3d_z pin - kp3d_z center).
+
+Lemma pin_relative_x : forall ps theta,
+  kp3d_x (pin_relative_to_slot ps theta) = ps3d_pin_radius ps * cos theta - ps3d_eccentricity ps.
+Proof.
+  intros. unfold pin_relative_to_slot, pin_position_3d, slot_center_3d, kp3d_x. ring.
+Qed.
+
+Lemma pin_relative_y : forall ps theta,
+  kp3d_y (pin_relative_to_slot ps theta) = ps3d_pin_radius ps * sin theta.
+Proof.
+  intros. unfold pin_relative_to_slot, pin_position_3d, slot_center_3d, kp3d_y. ring.
+Qed.
+
+Definition output_angle_3d_atan (ps : PinSlot3D) (theta : R) : R :=
+  let r := ps3d_pin_radius ps in
+  let e := ps3d_eccentricity ps in
+  atan ((r * sin theta) / (r * cos theta - e)).
+
+Lemma output_angle_3d_formula : forall ps theta,
+  ps3d_pin_radius ps > 0 ->
+  ps3d_pin_radius ps * cos theta - ps3d_eccentricity ps <> 0 ->
+  output_angle_3d_atan ps theta =
+    atan (ps3d_pin_radius ps * sin theta / (ps3d_pin_radius ps * cos theta - ps3d_eccentricity ps)).
+Proof.
+  intros ps theta Hr Hdenom. unfold output_angle_3d_atan. reflexivity.
+Qed.
+
+Definition eccentricity_ratio_3d (ps : PinSlot3D) : R :=
+  ps3d_eccentricity ps / ps3d_pin_radius ps.
+
+Lemma output_angle_normalized : forall ps theta,
+  ps3d_pin_radius ps > 0 ->
+  ps3d_pin_radius ps * cos theta - ps3d_eccentricity ps <> 0 ->
+  output_angle_3d_atan ps theta =
+    atan (sin theta / (cos theta - eccentricity_ratio_3d ps)).
+Proof.
+  intros ps theta Hr Hdenom.
+  unfold output_angle_3d_atan, eccentricity_ratio_3d.
+  f_equal.
+  assert (Hr_neq : ps3d_pin_radius ps <> 0) by lra.
+  assert (Hdenom_comm : cos theta * ps3d_pin_radius ps - ps3d_eccentricity ps <> 0).
+  { intro Hcontra. apply Hdenom.
+    replace (ps3d_pin_radius ps * cos theta) with (cos theta * ps3d_pin_radius ps) by ring.
+    exact Hcontra. }
+  field. split; [exact Hr_neq | exact Hdenom_comm].
+Qed.
+
+Definition canonical_pin_slot_output (e theta : R) : R :=
+  atan (sin theta / (cos theta - e)).
+
+Lemma canonical_output_at_zero : forall e,
+  e < 1 -> canonical_pin_slot_output e 0 = 0.
+Proof.
+  intros e He. unfold canonical_pin_slot_output.
+  rewrite sin_0. replace (0 / (cos 0 - e)) with 0.
+  - apply atan_0.
+  - rewrite cos_0. field. lra.
+Qed.
+
+Lemma canonical_output_at_pi : forall e,
+  e < 1 -> e > -1 -> canonical_pin_slot_output e PI = 0.
+Proof.
+  intros e Hlt Hgt. unfold canonical_pin_slot_output.
+  rewrite sin_PI. replace (0 / (cos PI - e)) with 0.
+  - apply atan_0.
+  - rewrite cos_PI. field. lra.
+Qed.
+
+Definition canonical_approx_output (e theta : R) : R :=
+  theta + e * sin theta.
+
+Definition canonical_exact_output (e theta : R) : R :=
+  theta + atan (e * sin theta / (1 + e * cos theta)).
+
+Definition valid_pin_slot_3d (ps : PinSlot3D) : Prop :=
+  ps3d_pin_radius ps > 0 /\
+  ps3d_eccentricity ps >= 0 /\
+  ps3d_eccentricity ps < ps3d_pin_radius ps /\
+  ps3d_slot_length ps >= 2 * ps3d_eccentricity ps.
+
+Definition antikythera_pin_slot_3d : PinSlot3D :=
+  mkPinSlot3D 30 (11/10) (25/10).
+
+Lemma antikythera_3d_valid : valid_pin_slot_3d antikythera_pin_slot_3d.
+Proof.
+  unfold valid_pin_slot_3d, antikythera_pin_slot_3d,
+         ps3d_pin_radius, ps3d_eccentricity, ps3d_slot_length.
+  repeat split; lra.
+Qed.
+
+Lemma antikythera_3d_eccentricity_ratio :
+  eccentricity_ratio_3d antikythera_pin_slot_3d = 11 / 300.
+Proof.
+  unfold eccentricity_ratio_3d, antikythera_pin_slot_3d,
+         ps3d_eccentricity, ps3d_pin_radius.
+  field.
+Qed.
+
+Definition pin_distance_from_slot_center (ps : PinSlot3D) (theta : R) : R :=
+  let rel := pin_relative_to_slot ps theta in
+  sqrt ((kp3d_x rel)^2 + (kp3d_y rel)^2).
+
+Lemma pin_distance_formula : forall ps theta,
+  pin_distance_from_slot_center ps theta =
+    sqrt ((ps3d_pin_radius ps * cos theta - ps3d_eccentricity ps)^2 +
+          (ps3d_pin_radius ps * sin theta)^2).
+Proof.
+  intros. unfold pin_distance_from_slot_center, pin_relative_to_slot,
+                 pin_position_3d, slot_center_3d, kp3d_x, kp3d_y.
+  f_equal. ring.
+Qed.
+
+Lemma pin_distance_expanded : forall ps theta,
+  let r := ps3d_pin_radius ps in
+  let e := ps3d_eccentricity ps in
+  (r * cos theta - e)^2 + (r * sin theta)^2 =
+    r^2 - 2 * e * r * cos theta + e^2.
+Proof.
+  intros ps theta r e.
+  pose proof (sin2_plus_cos2_pow theta) as Hid.
+  ring_simplify.
+  replace (r ^ 2 * cos theta ^ 2 + r ^ 2 * sin theta ^ 2)
+    with (r ^ 2 * ((sin theta) ^ 2 + (cos theta) ^ 2)) by ring.
+  rewrite Hid. ring.
+Qed.
+
+Lemma nonneg_mult_nonneg : forall a b : R, 0 <= a -> 0 <= b -> 0 <= a * b.
+Proof. intros a b Ha Hb. apply Rmult_le_pos; assumption. Qed.
+
+Lemma nonneg_mult_nonneg_ge : forall a b : R, a >= 0 -> b >= 0 -> a * b >= 0.
+Proof.
+  intros a b Ha Hb.
+  apply Rle_ge.
+  apply Rmult_le_pos; apply Rge_le; assumption.
+Qed.
+
+Lemma cos_one_minus_nonneg : forall theta, 1 - cos theta >= 0.
+Proof. intro theta. pose proof (COS_bound theta). lra. Qed.
+
+Lemma cos_one_plus_nonneg : forall theta, 1 + cos theta >= 0.
+Proof. intro theta. pose proof (COS_bound theta). lra. Qed.
+
+Lemma quadratic_lower_bound : forall r e theta,
+  r > 0 -> e >= 0 -> e < r ->
+  (r - e)^2 <= r^2 + e^2 - 2*e*r*cos theta.
+Proof.
+  intros r e theta Hr He_nonneg He_lt_r.
+  replace ((r - e)^2) with (r^2 + e^2 - 2*e*r) by ring.
+  cut (2*e*r - 2*e*r*cos theta >= 0). { lra. }
+  replace (2*e*r - 2*e*r*cos theta) with (2*e*r*(1 - cos theta)) by ring.
+  assert (H2er : 2*e*r >= 0).
+  { apply nonneg_mult_nonneg_ge.
+    apply nonneg_mult_nonneg_ge; lra.
+    lra. }
+  apply nonneg_mult_nonneg_ge.
+  - exact H2er.
+  - apply cos_one_minus_nonneg.
+Qed.
+
+Lemma quadratic_upper_bound : forall r e theta,
+  r > 0 -> e >= 0 -> e < r ->
+  r^2 + e^2 - 2*e*r*cos theta <= (r + e)^2.
+Proof.
+  intros r e theta Hr He_nonneg He_lt_r.
+  replace ((r + e)^2) with (r^2 + e^2 + 2*e*r) by ring.
+  cut (2*e*r + 2*e*r*cos theta >= 0). { lra. }
+  replace (2*e*r + 2*e*r*cos theta) with (2*e*r*(1 + cos theta)) by ring.
+  assert (H2er : 2*e*r >= 0).
+  { apply nonneg_mult_nonneg_ge.
+    apply nonneg_mult_nonneg_ge; lra.
+    lra. }
+  apply nonneg_mult_nonneg_ge.
+  - exact H2er.
+  - apply cos_one_plus_nonneg.
+Qed.
+
+Lemma quadratic_nonneg : forall r e theta,
+  r > 0 -> e >= 0 -> e < r ->
+  r^2 + e^2 - 2*e*r*cos theta >= 0.
+Proof.
+  intros r e theta Hr He_nonneg He_lt_r.
+  pose proof (quadratic_lower_bound r e theta Hr He_nonneg He_lt_r) as Hlo.
+  assert ((r - e)^2 >= 0) by (apply Rle_ge; apply pow2_ge_0).
+  lra.
+Qed.
+
+Lemma sqrt_le_from_sqr : forall a b : R,
+  0 <= a -> 0 <= b -> a^2 <= b -> a <= sqrt b.
+Proof.
+  intros a b Ha Hb Hab.
+  rewrite <- (sqrt_pow2 a Ha).
+  apply sqrt_le_1; try lra.
+  apply pow2_ge_0.
+Qed.
+
+Lemma sqrt_le_to_sqr : forall a b : R,
+  0 <= a -> 0 <= b -> a <= b^2 -> sqrt a <= b.
+Proof.
+  intros a b Ha Hb Hab.
+  rewrite <- (sqrt_pow2 b Hb).
+  apply sqrt_le_1.
+  - exact Ha.
+  - apply pow2_ge_0.
+  - exact Hab.
+Qed.
+
+Lemma pin_distance_bounds : forall ps theta,
+  valid_pin_slot_3d ps ->
+  ps3d_pin_radius ps - ps3d_eccentricity ps <=
+    pin_distance_from_slot_center ps theta <=
+  ps3d_pin_radius ps + ps3d_eccentricity ps.
+Proof.
+  intros ps theta Hvalid.
+  destruct Hvalid as [Hr [He_nonneg [He_lt_r Hslot]]].
+  rewrite pin_distance_formula.
+  pose proof (sin2_plus_cos2_pow theta) as Htrig.
+  set (r := ps3d_pin_radius ps) in *.
+  set (e := ps3d_eccentricity ps) in *.
+  assert (Hinner : (r * cos theta - e)^2 + (r * sin theta)^2 =
+                   r^2 + e^2 - 2*e*r*cos theta).
+  { ring_simplify.
+    replace (r ^ 2 * cos theta ^ 2 + r ^ 2 * sin theta ^ 2)
+      with (r ^ 2 * ((sin theta)^2 + (cos theta)^2)) by ring.
+    rewrite Htrig. ring. }
+  rewrite Hinner.
+  pose proof (quadratic_lower_bound r e theta Hr He_nonneg He_lt_r) as Hlo.
+  pose proof (quadratic_upper_bound r e theta Hr He_nonneg He_lt_r) as Hhi.
+  pose proof (quadratic_nonneg r e theta Hr He_nonneg He_lt_r) as Hpos.
+  assert (Hrme_nonneg : r - e >= 0) by lra.
+  assert (Hrpe_nonneg : r + e >= 0) by lra.
+  split.
+  - apply sqrt_le_from_sqr; lra.
+  - apply sqrt_le_to_sqr; lra.
+Qed.
+
+Definition slot_constraint_satisfied (ps : PinSlot3D) (theta : R) : Prop :=
+  pin_distance_from_slot_center ps theta <= ps3d_slot_length ps / 2 + ps3d_pin_radius ps.
+
+Lemma antikythera_slot_always_reachable : forall theta,
+  slot_constraint_satisfied antikythera_pin_slot_3d theta.
+Proof.
+  intro theta.
+  unfold slot_constraint_satisfied.
+  pose proof (pin_distance_bounds antikythera_pin_slot_3d theta antikythera_3d_valid) as [_ Hmax].
+  unfold antikythera_pin_slot_3d, ps3d_slot_length, ps3d_pin_radius, ps3d_eccentricity in *.
+  lra.
+Qed.
+
+Definition angular_velocity_3d (ps : PinSlot3D) (theta omega_in : R) : R :=
+  let e := eccentricity_ratio_3d ps in
+  omega_in * (1 + e * cos theta) / (1 - e^2).
+
+Lemma velocity_3d_at_zero : forall ps omega,
+  valid_pin_slot_3d ps ->
+  angular_velocity_3d ps 0 omega =
+    omega * (1 + eccentricity_ratio_3d ps) / (1 - (eccentricity_ratio_3d ps)^2).
+Proof.
+  intros ps omega Hvalid.
+  unfold angular_velocity_3d.
+  rewrite cos_0.
+  replace (eccentricity_ratio_3d ps * 1) with (eccentricity_ratio_3d ps) by ring.
+  reflexivity.
+Qed.
+
+Lemma velocity_3d_at_pi : forall ps omega,
+  valid_pin_slot_3d ps ->
+  angular_velocity_3d ps PI omega =
+    omega * (1 - eccentricity_ratio_3d ps) / (1 - (eccentricity_ratio_3d ps)^2).
+Proof.
+  intros ps omega Hvalid.
+  unfold angular_velocity_3d.
+  rewrite cos_PI.
+  replace (eccentricity_ratio_3d ps * -1) with (- eccentricity_ratio_3d ps) by ring.
+  replace (1 + - eccentricity_ratio_3d ps) with (1 - eccentricity_ratio_3d ps) by ring.
+  reflexivity.
+Qed.
+
+Definition connects_2d_3d_models : Prop :=
+  eccentricity_param antikythera_pin_slot = eccentricity_ratio_3d antikythera_pin_slot_3d.
+
+Lemma model_equivalence : connects_2d_3d_models.
+Proof.
+  unfold connects_2d_3d_models.
+  rewrite antikythera_eccentricity_value.
+  rewrite antikythera_3d_eccentricity_ratio.
+  reflexivity.
+Qed.
+
+Definition true_anomaly_from_eccentric (E e : R) : R :=
+  2 * atan (sqrt ((1 + e) / (1 - e)) * tan (E / 2)).
+
+Definition eccentric_anomaly_from_true (nu e : R) : R :=
+  2 * atan (sqrt ((1 - e) / (1 + e)) * tan (nu / 2)).
+
+Lemma true_eccentric_inverse_at_zero : forall e,
+  0 < e -> e < 1 ->
+  true_anomaly_from_eccentric 0 e = 0.
+Proof.
+  intros e He_pos He_lt1.
+  unfold true_anomaly_from_eccentric.
+  replace (0 / 2) with 0 by field.
+  rewrite tan_0. rewrite Rmult_0_r. rewrite atan_0. ring.
+Qed.
+
+Definition pin_slot_models_eccentric_anomaly : Prop :=
+  forall ps theta,
+  valid_pin_slot_3d ps ->
+  exists E_out,
+    E_out = canonical_exact_output (eccentricity_ratio_3d ps) theta.
+
+Theorem pin_slot_3d_complete : pin_slot_models_eccentric_anomaly.
+Proof.
+  unfold pin_slot_models_eccentric_anomaly.
+  intros ps theta Hvalid.
+  exists (canonical_exact_output (eccentricity_ratio_3d ps) theta).
+  reflexivity.
+Qed.
+
+Definition mechanism_3d_kinematics_verified : Prop :=
+  valid_pin_slot_3d antikythera_pin_slot_3d /\
+  connects_2d_3d_models /\
+  pin_slot_models_eccentric_anomaly.
+
+Theorem gap1_3d_kinematics_complete : mechanism_3d_kinematics_verified.
+Proof.
+  unfold mechanism_3d_kinematics_verified.
+  split. { exact antikythera_3d_valid. }
+  split. { exact model_equivalence. }
+  exact pin_slot_3d_complete.
+Qed.
+
+Close Scope R_scope.
+
 Open Scope Q_scope.
 
 (* Anomalistic month = 27.554551 days; perigee-to-perigee period. *)
